@@ -10,7 +10,7 @@ import warnings
 import numpy as np
 import xarray as xr
 
-from ..utils import hr_filesize
+from ..internal.utils import hr_filesize
 from .parse_context import ParseContext
 
 

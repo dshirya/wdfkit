@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from typing import Union
 
-from .wdf.wdf_io import read_wdf_file
+from .wdf.io import read_wdf_file
 
 StrPath = Union[str, os.PathLike[str]]
 
