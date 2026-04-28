@@ -1,0 +1,28 @@
+# -*- coding: utf-8 -*-
+"""Parse ``YLST`` block (secondary Y-axis list when present)."""
+
+from __future__ import annotations
+
+from ... import constants as const
+from ..binary_io import read_from_file
+from ..block_index import indices_named
+from ..parse_context import ParseContext
+
+
+def parse_ylst(ctx: ParseContext) -> None:
+    name = "YLST"
+    for i in indices_named(ctx.blocks, name):
+        ctx.print_block_header(name, i)
+        ctx.f.seek(ctx.blocks["BlockOffsets"][i] + 16)
+        yldt = read_from_file(ctx.f)
+        ctx.params["YlistDataType"] = const.DATA_TYPES.get(
+            yldt, f"{yldt}_unknown"
+        )
+        yldu = read_from_file(ctx.f)
+        ctx.params["YlistDataUnits"] = const.DATA_UNITS.get(
+            yldu, f"{yldu}_unknown"
+        )
+        y_values_count = int((ctx.blocks["BlockSizes"][i] - 24) / 4)
+        if y_values_count > 1:
+            y_values = read_from_file(ctx.f, "<f", count=y_values_count)
+            print(y_values)

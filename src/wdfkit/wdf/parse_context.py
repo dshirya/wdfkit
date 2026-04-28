@@ -1,0 +1,40 @@
+# -*- coding: utf-8 -*-
+"""Mutable parse state passed through WiRE block parsers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import IO, Any, Optional
+
+
+@dataclass
+class ParseContext:
+    """Shared state while reading a single ``.wdf`` file."""
+
+    filename: str
+    verbose: bool
+    time_coord: Optional[str]
+    spectral_dim: Optional[str]
+    filesize: int = 0
+    f: Optional[IO[bytes]] = None
+    params: dict = field(default_factory=dict)
+    map_params: dict = field(default_factory=dict)
+    coord_dict: dict = field(default_factory=dict)
+    blocks: dict = field(default_factory=dict)
+    spectra: Any = None  # np.ndarray set in DATA block
+    npoints: int = 0
+    nspectra: int = 0
+    ncollected: int = 0
+    spectral_dim_name: Optional[str] = None
+    img: Any = None
+    origin_labels: list = field(default_factory=list)
+    origin_set_dtypes: list = field(default_factory=list)
+    origin_set_units: list = field(default_factory=list)
+
+    def print_block_header(self, name: str, index: int) -> None:
+        if self.verbose:
+            print(
+                f"\n{' Block : ' + name + ' ':=^80s}\n"
+                f"size: {self.blocks['BlockSizes'][index]},"
+                f"offset: {self.blocks['BlockOffsets'][index]}"
+            )
