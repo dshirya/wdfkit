@@ -1,0 +1,8 @@
+{
+  "project_name": "wdfkit",
+  "github_username_or_orgname": "dshirya",
+  "github_repo_name": "wdfkit",
+  "conda_pypi_package_dist_name": "wdfkit",
+  "package_dir_name": "wdfkit",
+  "contributors": "Danila Shiryaev"
+}
