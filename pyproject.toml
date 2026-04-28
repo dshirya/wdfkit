@@ -9,7 +9,7 @@ dynamic=['dependencies']
 
 [tool.setuptools.packages.find]
 where = ["src"]  # list of folders that contain the packages (["."] by default)
-include = ["*"]  # package names should match these glob patterns (["*"] by default)
+include = ["wdfkit*"]  # ship only the public package; `legacy/` stays in-repo for reference
 exclude = []  # exclude packages matching these glob patterns (empty by default)
 
 [tool.setuptools.dynamic]
