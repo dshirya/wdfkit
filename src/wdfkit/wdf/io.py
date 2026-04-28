@@ -11,7 +11,7 @@ from PIL import ImageFile
 from .assemble import assemble_data_array
 from .block_index import scan_blocks
 from .blocks.data_block import parse_data
-from .blocks.orgn import parse_orgn, print_coord_lengths_if_verbose
+from .blocks.origin import parse_orgn, print_coord_lengths_if_verbose
 from .blocks.wdf1 import parse_wdf1
 from .blocks.whtl import parse_whtl
 from .blocks.wmap import parse_wmap
@@ -28,7 +28,7 @@ def read_wdf_file(filename, verbose, time_coord, spectral_dim=None):
     Parameters
     ----------
     spectral_dim
-        Passed to :func:`~wdfkit.spectral_axis.resolve_spectral_axis` during
+        Passed to :func:`~wdfkit.spectral.resolve_spectral_axis` during
         ``XLST`` handling.
     """
     try:

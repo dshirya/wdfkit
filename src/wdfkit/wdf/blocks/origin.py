@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from ... import constants as const
-from ...utils import convert_time, pad_if_unfinished
+from ...internal import constants as const
+from ...internal.utils import convert_time, pad_if_unfinished
 from ..binary_io import read_from_file
 from ..block_index import indices_named
 from ..parse_context import ParseContext

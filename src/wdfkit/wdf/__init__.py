@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Low-level WiRE ``.wdf`` binary parsing (blocks, context, assembly)."""
 
-from .wdf_io import read_wdf_file
+from .io import read_wdf_file
 
 __all__ = ["read_wdf_file"]
