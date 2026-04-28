@@ -1,7 +1,10 @@
 """Read Renishaw WiRE .wdf files (spectra and metadata)."""
 
-from .reader import WDFReader, read_WDF
+from .reader import WDFReader
+from .spectral_axis import SpectralAxisSpec, resolve_spectral_axis
 
-read_wdf = read_WDF
-
-__all__ = ["WDFReader", "read_WDF", "read_wdf"]
+__all__ = [
+    "WDFReader",
+    "SpectralAxisSpec",
+    "resolve_spectral_axis",
+]

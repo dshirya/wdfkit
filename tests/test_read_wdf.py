@@ -1,4 +1,5 @@
-"""Parity tests for `wdfkit.read_WDF` against legacy golden outputs."""
+"""Parity tests for :class:`wdfkit.WDFReader` against golden spectral
+arrays."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from wdfkit import WDFReader, read_WDF
+from wdfkit import WDFReader
 
 TEST_DATA = Path(__file__).resolve().parent / "test_data"
 
@@ -29,9 +30,9 @@ def _sha256_values(arr: np.ndarray) -> str:
 
 def test_read_wdf_single_scan_matches_golden():
     path = TEST_DATA / "test.wdf"
-    da, img = read_WDF(str(path))
+    da, img = WDFReader(path)
 
-    assert dict(da.sizes) == {"Time": 1, "shifts": 9341}
+    assert dict(da.sizes) == {"Time": 1, "nm": 9341}
     assert da.attrs["WdfFlag"] == "WdfXYXY"
     assert da.attrs["MeasurementType"] == "Single"
     assert da.attrs["PointsPerSpectrum"] == 9341
@@ -53,7 +54,7 @@ def test_read_wdf_single_scan_matches_golden():
         rtol=0,
         atol=1e-8,
     )
-    np.testing.assert_array_equal(da["shifts"].shape, (9341,))
+    np.testing.assert_array_equal(da["nm"].shape, (9341,))
 
     row = da.values[0]
     np.testing.assert_allclose(
@@ -68,9 +69,9 @@ def test_read_wdf_single_scan_matches_golden():
 
 def test_read_wdf_map_matches_golden():
     path = TEST_DATA / "test_2.wdf"
-    da, img = read_WDF(str(path))
+    da, img = WDFReader(path)
 
-    assert dict(da.sizes) == {"Y": 17, "X": 25, "shifts": 9341}
+    assert dict(da.sizes) == {"Y": 17, "X": 25, "nm": 9341}
     assert da.attrs["WdfFlag"] == "16: UnknownFlag (LiveTrack?)"
     assert da.attrs["MeasurementType"] == "Map"
     assert da.attrs["MapAreaType"] == "RandomPoints"
@@ -100,13 +101,20 @@ def test_read_wdf_map_matches_golden():
 
 def test_read_wdf_missing_file_raises():
     with pytest.raises(IOError, match="does not exist"):
-        read_WDF(str(TEST_DATA / "nonexistent_file.wdf"))
+        WDFReader(TEST_DATA / "nonexistent_file.wdf")
 
 
-def test_wdf_reader_matches_read_wdf_function():
-    """Class API should match the legacy-style function wrapper."""
+def test_wdf_reader_idempotent_same_file():
+    """Two reads of the same path yield identical spectral cubes."""
     path = TEST_DATA / "test.wdf"
-    da_fn, img_fn = read_WDF(str(path))
-    da_cls, img_cls = WDFReader(path).read()
-    np.testing.assert_array_equal(da_fn.values, da_cls.values)
-    assert img_fn is img_cls is None
+    da_a, _ = WDFReader(path)
+    da_b, _ = WDFReader(path)
+    np.testing.assert_array_equal(da_a.values, da_b.values)
+
+
+def test_spectral_dim_override_restores_legacy_name():
+    """Force spectral coordinate dimension name (e.g. ``shifts``)."""
+    path = TEST_DATA / "test.wdf"
+    da, _ = WDFReader(path, spectral_dim="shifts")
+    assert dict(da.sizes) == {"Time": 1, "shifts": 9341}
+    assert da["shifts"].attrs.get("units") == "nm"
