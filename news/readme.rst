@@ -4,7 +4,8 @@
 
 **Changed:**
 
-* README file moved to rst format.
+* README.rst file updated.
+* Logo added to README.rst file.
 
 **Deprecated:**
 
