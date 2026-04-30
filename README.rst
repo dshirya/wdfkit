@@ -1,12 +1,12 @@
-|Icon| |title|_
-===============
+|title|_
+========
 
 .. |title| replace:: wdfkit
 .. _title: https://dshirya.github.io/wdfkit
 
 |PyPI| |Forge| |PythonVersion| |PR|
 
-|CI| |Codecov| |Black| |Tracking|
+|Codecov| |Black| |Tracking|
 
 
 .. |Black| image:: https://img.shields.io/badge/code_style-black-black
@@ -30,7 +30,7 @@
 .. |Tracking| image:: https://img.shields.io/badge/issue_tracking-github-blue
         :target: https://github.com/dshirya/wdfkit/issues
 
-.. image:: docs/source/img/logo.png
+.. image:: https://raw.githubusercontent.com/dshirya/wdfkit/main/docs/source/img/logo.png
         :alt: wdfkit logo
         :width: 400px
         :align: center
