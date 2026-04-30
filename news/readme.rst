@@ -1,11 +1,10 @@
 **Added:**
 
-* Documentation updated.
-* Logo created.
+* <news item>
 
 **Changed:**
 
-* <news item>
+* README file moved to rst format.
 
 **Deprecated:**
 
