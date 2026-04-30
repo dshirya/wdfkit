@@ -48,6 +48,7 @@ repos:
     rev: v2.3.0
     hooks:
       - id: codespell
+        args: [--ignore-words=.codespell-ignore.txt]
         additional_dependencies:
           - tomli
   # prettier - multi formatter for .json, .yml, and .md files

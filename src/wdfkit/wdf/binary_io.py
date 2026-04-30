@@ -16,7 +16,8 @@ BLOCK_HEADER_DTYPE = np.dtype(
 
 
 def read_from_file(file_obj, dtype=np.uint32, count=1):
-    """Read primitive(s) from an open binary file (numpy ``fromfile`` wrapper).
+    """Read primitive(s) from an open binary file (numpy ``fromfile``
+    wrapper).
 
     Returns a scalar when ``count == 1``, otherwise a length-``count`` array.
     """

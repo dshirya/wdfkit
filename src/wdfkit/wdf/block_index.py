@@ -33,5 +33,6 @@ def scan_blocks(file_obj, filesize: int) -> dict:
 
 
 def indices_named(blocks: dict, name: str) -> list[int]:
-    """Return indices of blocks whose four-letter tag equals ``name``."""
+    """Return indices of blocks whose four-letter tag equals
+    ``name``."""
     return [i for i, x in enumerate(blocks["BlockNames"]) if x == name]

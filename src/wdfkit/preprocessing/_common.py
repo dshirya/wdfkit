@@ -27,7 +27,8 @@ def transpose_spectral_last(
     da: xr.DataArray,
     spectral_dim: str,
 ) -> tuple[xr.DataArray, tuple[str, ...]]:
-    """Return ``(dataarray, original_dim_order)`` with spectral axis last."""
+    """Return ``(dataarray, original_dim_order)`` with spectral axis
+    last."""
     order = (*[d for d in da.dims if d != spectral_dim], spectral_dim)
     orig = tuple(da.dims)
     if order == orig:
@@ -49,7 +50,8 @@ def with_new_values(
     treatment_key: str,
     treatment_value: dict,
 ) -> xr.DataArray:
-    """Copy ``template`` with new ``values`` and merged ``treatments``."""
+    """Copy ``template`` with new ``values`` and merged
+    ``treatments``."""
 
     out = template.copy(data=values)
     treats = dict(out.attrs.get("treatments") or {})

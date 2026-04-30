@@ -23,7 +23,8 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 def read_wdf_file(filename, verbose, time_coord, spectral_dim=None):
-    """Parse a WiRE WDF file (invoked by :class:`~wdfkit.reader.WDFReader`).
+    """Parse a WiRE WDF file (invoked by
+    :class:`~wdfkit.reader.WDFReader`).
 
     Parameters
     ----------
