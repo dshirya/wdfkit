@@ -1,34 +1,23 @@
 #!/usr/bin/env python
 ##############################################################################
 #
-# (c) 2026 Danila Shiryaev.
+# (c) 2026 Ecole Polytechnique Palaiseau.
 # All rights reserved.
 #
-# File coded by: Danila Shiryaev
+# File coded by: Danila Shiryaev.
+#
+# See GitHub contributions for a more detailed list of contributors.
+# https://github.com/dshirya/wdfkit/graphs/contributors
+#
+# See LICENSE.rst for license information.
 #
 ##############################################################################
-"""Read Renishaw WiRE .wdf files (spectra and metadata)."""
+"""Python package for WDF data treatment."""
 
-from .cosmic_ray import CosmicRayRemover, remove_cosmic_rays_1d
-from .preprocessing import normalize
-from .reader import WDFReader
-from .spectral import SpectralAxisSpec, resolve_spectral_axis
+# package version
+from wdfkit.version import __version__  # noqa
 
 # silence the pyflakes syntax checker
-assert WDFReader or True
-assert SpectralAxisSpec or True
-assert resolve_spectral_axis or True
-assert normalize or True
-assert CosmicRayRemover or True
-assert remove_cosmic_rays_1d or True
-
-__all__ = [
-    "WDFReader",
-    "SpectralAxisSpec",
-    "resolve_spectral_axis",
-    "normalize",
-    "CosmicRayRemover",
-    "remove_cosmic_rays_1d",
-]
+assert __version__ or True
 
 # End of file

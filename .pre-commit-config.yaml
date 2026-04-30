@@ -20,8 +20,6 @@ repos:
       - id: check-merge-conflict
       - id: check-toml
       - id: check-added-large-files
-        args: [--maxkb=500]
-        exclude: ^tests/test_data/
   - repo: https://github.com/psf/black
     rev: 24.4.2
     hooks:
@@ -50,7 +48,6 @@ repos:
     rev: v2.3.0
     hooks:
       - id: codespell
-        args: [--ignore-words=.codespell-ignore.txt]
         additional_dependencies:
           - tomli
   # prettier - multi formatter for .json, .yml, and .md files
@@ -61,9 +58,9 @@ repos:
         additional_dependencies:
           - "prettier@^3.2.4"
   # docformatter - PEP 257 compliant docstring formatter
-  # - repo: https://github.com/s-weigand/docformatter
-  #   rev: 5757c5190d95e5449f102ace83df92e7d3b06c6c
-  #   hooks:
-  #     - id: docformatter
-  #       additional_dependencies: [tomli]
-  #       args: [--in-place, --config, ./pyproject.toml]
+  - repo: https://github.com/s-weigand/docformatter
+    rev: 5757c5190d95e5449f102ace83df92e7d3b06c6c
+    hooks:
+      - id: docformatter
+        additional_dependencies: [tomli]
+        args: [--in-place, --config, ./pyproject.toml]
