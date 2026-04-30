@@ -12,7 +12,8 @@ StrPath = Union[str, os.PathLike[str]]
 
 
 class WDFReader:
-    """Load spectra and metadata from a Renishaw WiRE ``.wdf`` binary file.
+    """Load spectra and metadata from a Renishaw WiRE ``.wdf`` binary
+    file.
 
     Typical usage::
 

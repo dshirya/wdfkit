@@ -20,8 +20,6 @@ repos:
       - id: check-merge-conflict
       - id: check-toml
       - id: check-added-large-files
-        args: [--maxkb=500]
-        exclude: ^tests/test_data/
   - repo: https://github.com/psf/black
     rev: 24.4.2
     hooks:

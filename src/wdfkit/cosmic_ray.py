@@ -131,7 +131,8 @@ class CosmicRayRemover:
             )
 
     def harmonic_check(self, spectrum: xr.DataArray) -> xr.DataArray:
-        """Notch broad harmonics when ``LaserWaveLength`` is ~355 nm (Nd:YAG).
+        """Notch broad harmonics when ``LaserWaveLength`` is ~355 nm
+        (Nd:YAG).
 
         If ``spectrum.attrs['LaserWaveLength']`` is outside 354–356 nm, returns
         ``spectrum`` unchanged.
@@ -189,8 +190,9 @@ class CosmicRayRemover:
         self,
         spectrum: xr.DataArray,
     ) -> tuple[xr.DataArray, dict[str, Any]]:
-        """Like :meth:`remove_cosmic_rays`, but returns a **diagnostics** dict
-        for visualization / QC (not written to ``DataArray.attrs``).
+        """Like :meth:`remove_cosmic_rays`, but returns a
+        **diagnostics** dict for visualization / QC (not written to
+        ``DataArray.attrs``).
 
         For 3D maps, ``diagnostics`` includes boolean ``core_mask``,
         ``repair_mask``, and float arrays ``residual``, ``preprocessed``,
@@ -295,7 +297,8 @@ class CosmicRayRemover:
         self,
         spectrum: xr.DataArray,
     ) -> tuple[xr.DataArray, dict[str, Any]]:
-        """Harmonics, then :meth:`remove_cosmic_rays_with_diagnostics`."""
+        """Harmonics, then
+        :meth:`remove_cosmic_rays_with_diagnostics`."""
         after_h = self.harmonic_check(spectrum)
         return self.remove_cosmic_rays_with_diagnostics(after_h)
 
@@ -308,7 +311,8 @@ class CosmicRayRemover:
         da_template: xr.DataArray,
         spectrum_1d: np.ndarray,
     ) -> xr.DataArray:
-        """1D robust spike removal without global intensity rescaling."""
+        """1D robust spike removal without global intensity
+        rescaling."""
         resolve_spectral_dim(da_template, self.spectral_dim)
         corrected, mask = remove_cosmic_rays_1d(
             spectrum_1d,

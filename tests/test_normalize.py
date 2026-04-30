@@ -75,7 +75,8 @@ def test_normalize_each_method_runs_on_small_ndarray(method):
 
 
 def test_normalize_area_numpy2_trapz_integral_unity_before_min_subtract():
-    """``area`` uses the trapezoid rule; flat spectrum becomes all zeros."""
+    """``area`` uses the trapezoid rule; flat spectrum becomes all
+    zeros."""
     row = np.ones((1, 4), dtype=np.float64)
     x = np.array([0.0, 1.0, 2.0, 3.0], dtype=np.float64)
     spectra = row.copy()

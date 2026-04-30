@@ -43,7 +43,8 @@ def positive_spike_mask_vs_median_smooth(
     median_smoothed_y: np.ndarray,
     threshold_multiplier: float,
 ) -> tuple[np.ndarray, float]:
-    """Mask where positive residual exceeds ``threshold_multiplier * noise``.
+    """Mask where positive residual exceeds ``threshold_multiplier *
+    noise``.
 
     Residual is ``y - median_smoothed_y``; ``noise`` is scaled MAD of residual.
     """

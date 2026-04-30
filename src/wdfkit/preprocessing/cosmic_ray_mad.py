@@ -20,7 +20,8 @@ def noise_estimate_too_small(
     noise: float,
     reference_scale: float,
 ) -> bool:
-    """True if ``noise`` is too small or non-finite for stable thresholding."""
+    """True if ``noise`` is too small or non-finite for stable
+    thresholding."""
     if not np.isfinite(noise):
         return True
     floor = 1e-15 * (reference_scale + np.finfo(float).tiny)

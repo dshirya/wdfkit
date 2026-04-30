@@ -9,8 +9,8 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class SpectralAxisSpec:
-    """Resolved spectral coordinate used as xarray dimension name + coord
-    attrs."""
+    """Resolved spectral coordinate used as xarray dimension name +
+    coord attrs."""
 
     dim_name: str
     units: str

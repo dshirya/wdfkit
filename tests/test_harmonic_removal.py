@@ -1,4 +1,5 @@
-"""Tests for laser-harmonic notch (Nd:YAG 355 nm) before cosmic-ray removal."""
+"""Tests for laser-harmonic notch (Nd:YAG 355 nm) before cosmic-ray
+removal."""
 
 from __future__ import annotations
 

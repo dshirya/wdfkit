@@ -4,22 +4,65 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wdfkit"
-version = "0.0.1"
-dynamic=['dependencies']
+dynamic=['version', 'dependencies']
+authors = [
+  {name='Danila Shiryaev', email='danila.shiryaev@polytechnique.edu'},
+]
+maintainers = [
+  {name='Danila Shiryaev', email='danila.shiryaev@polytechnique.edu'},
+]
+description = "Python package for WDF data treatment"
+keywords = ['WDF', 'Raman', 'PL']
+readme = "README.rst"
+requires-python = ">=3.12, <3.15"
+classifiers = [
+        'Development Status :: 5 - Production/Stable',
+        'Environment :: Console',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: BSD License',
+        'Operating System :: MacOS :: MacOS X',
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: POSIX',
+        'Operating System :: Unix',
+        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
+        'Programming Language :: Python :: 3.14',
+        'Topic :: Scientific/Engineering :: Physics',
+        'Topic :: Scientific/Engineering :: Chemistry',
+]
 
-[tool.setuptools.packages.find]
-where = ["src"]  # list of folders that contain the packages (["."] by default)
-include = ["wdfkit*"]  # ship only the public package; `legacy/` stays in-repo for reference
-exclude = []  # exclude packages matching these glob patterns (empty by default)
-
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements/pip.txt"]}
+[project.urls]
+Homepage = "https://github.com/dshirya/wdfkit/"
+Issues = "https://github.com/dshirya/wdfkit/issues/"
 
 [tool.setuptools-git-versioning]
 enabled = true
 template = "{tag}"
 dev_template = "{tag}"
 dirty_template = "{tag}"
+
+[tool.setuptools.packages.find]
+where = ["src"]  # list of folders that contain the packages (["."] by default)
+include = ["*"]  # package names should match these glob patterns (["*"] by default)
+exclude = []  # exclude packages matching these glob patterns (empty by default)
+namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+
+[project.scripts]
+wdfkit = "wdfkit.app:main"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements/pip.txt"]}
+
+[tool.codespell]
+exclude-file = ".codespell/ignore_lines.txt"
+ignore-words = ".codespell/ignore_words.txt"
+skip = "*.cif,*.dat"
+
+[tool.docformatter]
+recursive = true
+wrap-summaries = 72
+wrap-descriptions = 72
 
 [tool.black]
 line-length = 79
@@ -43,7 +86,3 @@ exclude = '''
   | tests/data
 )/
 '''
-
-[tool.isort]
-profile = "black"
-line_length = 79

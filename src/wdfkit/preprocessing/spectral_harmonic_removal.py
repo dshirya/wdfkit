@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Nd:YAG laser-harmonic notches (broad features, not cosmic-ray spikes)."""
+"""Nd:YAG laser-harmonic notches (broad features, not cosmic-ray
+spikes)."""
 
 from __future__ import annotations
 
@@ -60,8 +61,8 @@ def axis_is_absolute_wavenumber_cm(
     da: xr.DataArray,
     spectral_dim: str,
 ) -> bool:
-    """True if the spectral coordinate is absolute wavenumber (cm⁻¹), not λ
-    (nm).
+    """True if the spectral coordinate is absolute wavenumber (cm⁻¹),
+    not λ (nm).
 
     Raman *shift* axes are skipped (not absolute ν).
     """
@@ -89,7 +90,8 @@ def _axis_interval_around_wavelength_nm(
     wavenumber_axis: bool,
     half_width_nm: float,
 ) -> tuple[float, float]:
-    """Closed search interval in spectral-axis units for ``harmonic_nm``."""
+    """Closed search interval in spectral-axis units for
+    ``harmonic_nm``."""
     lo_nm = harmonic_nm - half_width_nm
     hi_nm = harmonic_nm + half_width_nm
     if not wavenumber_axis:
@@ -203,7 +205,8 @@ def harmonic_correct_dataarray(
     *,
     spectral_dim: str | None = None,
 ) -> xr.DataArray:
-    """If ``LaserWaveLength`` is ~355 nm, notch laser harmonics on every slice.
+    """If ``LaserWaveLength`` is ~355 nm, notch laser harmonics on every
+    slice.
 
     If any notch runs, merges ``treatments['Laser harmonic removal']``.
     Otherwise returns ``da`` unchanged (same object when no work done).

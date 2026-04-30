@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Parse ``ORGN`` per-spectrum origin coordinates (time, stage axes, ...)."""
+"""Parse ``ORGN`` per-spectrum origin coordinates (time, stage axes,
+...)."""
 
 from __future__ import annotations
 

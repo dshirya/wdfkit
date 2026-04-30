@@ -34,7 +34,8 @@ def unique_spatial_indices_from_nonzero(
     nonzero_axes: tuple[np.ndarray, ...],
     spatial_ndim: int,
 ) -> list[tuple[int, ...]]:
-    """Unique ``(y, x, …)`` from ``np.nonzero``-style sparse index arrays."""
+    """Unique ``(y, x, …)`` from ``np.nonzero``-style sparse index
+    arrays."""
     if spatial_ndim == 0:
         return []
     per_ax = [nonzero_axes[i] for i in range(spatial_ndim)]
@@ -64,8 +65,8 @@ def _per_wavelength_cutoff_relax_factors(
     noise_per_channel: np.ndarray,
     relax_floor: float,
 ) -> np.ndarray:
-    """Factors in ``[relax_floor, 1]`` that **lower** the cutoff in noisy
-    bands.
+    """Factors in ``[relax_floor, 1]`` that **lower** the cutoff in
+    noisy bands.
 
     Large per-channel noise → smaller factor → **higher** sensitivity
     there.
@@ -82,8 +83,8 @@ def _spectral_dilation_footprint_length(
     spectral_width_fraction: float,
     spectral_dilate_cap: int,
 ) -> int:
-    """1D window length along the spectral axis for binary dilation of the
-    mask.
+    """1D window length along the spectral axis for binary dilation of
+    the mask.
 
     Capped so dilation does not cover most of each spectrum (keeps
     repair local).
@@ -98,8 +99,9 @@ def _limit_mask_runs_along_spectral_axis(
     residual: np.ndarray,
     max_channels: int,
 ) -> np.ndarray:
-    """For each ``(y, x)``, shorten any contiguous True run along λ to at most
-    ``max_channels``, centered on the largest ``residual`` in that run."""
+    """For each ``(y, x)``, shorten any contiguous True run along λ to
+    at most ``max_channels``, centered on the largest ``residual`` in
+    that run."""
     if max_channels < 1:
         return mask
     ny, nx, _nlam = mask.shape
@@ -206,8 +208,8 @@ def correct_cosmic_rays_on_map_cube(
     tuple[np.ndarray, dict[str, Any]]
     | tuple[np.ndarray, dict[str, Any], dict[str, Any]]
 ):
-    """Spatial disk median on a per-spectrum normalized cube; robust positive
-    residual test per wavelength.
+    """Spatial disk median on a per-spectrum normalized cube; robust
+    positive residual test per wavelength.
 
     Per channel λ, the cutoff is
     ``map_mad_multiplier * (0.01/sensitivity) * relax_λ * noise_λ``,
