@@ -1,0 +1,299 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>wdfkit.preprocessing.cosmic_ray_1d &mdash; wdfkit 0.0.1rc0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=1ea0b0c9"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=cca77546"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            wdfkit
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/wdfkit.html">Package API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">wdfkit</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">wdfkit.preprocessing.cosmic_ray_1d</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for wdfkit.preprocessing.cosmic_ray_1d</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;1D spectrum cosmic-ray (positive spike) removal.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.signal</span><span class="w"> </span><span class="kn">import</span> <span class="n">medfilt</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.cosmic_ray_mad</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">noise_estimate_too_small</span><span class="p">,</span>
+    <span class="n">robust_mad_noise_with_floor</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">SingleSpectrumMethod</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;median&quot;</span><span class="p">,</span> <span class="s2">&quot;interpolate&quot;</span><span class="p">,</span> <span class="s2">&quot;derivative&quot;</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_coerce_float_1d_spectrum</span><span class="p">(</span>
+    <span class="n">y</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">kernel_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cast ``y`` to float 1D; validate inputs.</span>
+
+<span class="sd">    Ensures ``method`` is allowed and ``kernel_size`` is odd and ≥ 3.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;y must be 1D, got shape </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">allowed</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;median&quot;</span><span class="p">,</span> <span class="s2">&quot;interpolate&quot;</span><span class="p">,</span> <span class="s2">&quot;derivative&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;method must be one of </span><span class="si">{</span><span class="n">allowed</span><span class="si">!r}</span><span class="s2">, got </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">kernel_size</span> <span class="o">&lt;</span> <span class="mi">3</span> <span class="ow">or</span> <span class="n">kernel_size</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;kernel_size must be odd and &gt;= 3, got </span><span class="si">{</span><span class="n">kernel_size</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">arr</span>
+
+
+<div class="viewcode-block" id="positive_spike_mask_vs_median_smooth">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.positive_spike_mask_vs_median_smooth">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">positive_spike_mask_vs_median_smooth</span><span class="p">(</span>
+    <span class="n">y</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">median_smoothed_y</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">threshold_multiplier</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Mask where positive residual exceeds ``threshold_multiplier *</span>
+<span class="sd">    noise``.</span>
+
+<span class="sd">    Residual is ``y - median_smoothed_y``; ``noise`` is scaled MAD of residual.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">residual</span> <span class="o">=</span> <span class="n">y</span> <span class="o">-</span> <span class="n">median_smoothed_y</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">residual</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">),</span> <span class="mf">0.0</span>
+    <span class="n">amplitude_reference</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">y</span><span class="p">))),</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">median_smoothed_y</span><span class="p">))),</span>
+    <span class="p">)</span>
+    <span class="n">noise</span> <span class="o">=</span> <span class="n">robust_mad_noise_with_floor</span><span class="p">(</span>
+        <span class="n">residual</span><span class="p">,</span>
+        <span class="n">amplitude_reference</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">residual</span> <span class="o">&gt;</span> <span class="n">threshold_multiplier</span> <span class="o">*</span> <span class="n">noise</span>
+    <span class="k">return</span> <span class="n">mask</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">bool</span><span class="p">),</span> <span class="n">noise</span></div>
+
+
+
+<div class="viewcode-block" id="positive_spike_mask_from_derivative_peaks">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.positive_spike_mask_from_derivative_peaks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">positive_spike_mask_from_derivative_peaks</span><span class="p">(</span>
+    <span class="n">y</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">threshold_multiplier</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Interior ``i`` where ``y[i]`` is above both neighbors by</span>
+<span class="sd">    ``threshold_multiplier * noise``.</span>
+
+<span class="sd">    ``noise`` is scaled MAD of ``diff(y)``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">size</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dy</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">mask</span>
+    <span class="n">amplitude_reference</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">y</span><span class="p">))),</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dy</span><span class="p">))),</span>
+    <span class="p">)</span>
+    <span class="n">noise</span> <span class="o">=</span> <span class="n">robust_mad_noise_with_floor</span><span class="p">(</span><span class="n">dy</span><span class="p">,</span> <span class="n">amplitude_reference</span><span class="p">)</span>
+    <span class="n">max_abs_dy</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dy</span><span class="p">)))</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">tiny</span>
+    <span class="k">if</span> <span class="n">noise_estimate_too_small</span><span class="p">(</span><span class="n">noise</span><span class="p">,</span> <span class="n">max_abs_dy</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">mask</span>
+    <span class="n">threshold</span> <span class="o">=</span> <span class="n">threshold_multiplier</span> <span class="o">*</span> <span class="n">noise</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">y</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">y</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">):</span>
+            <span class="n">mask</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="n">mask</span></div>
+
+
+
+<div class="viewcode-block" id="linear_interpolate_masked_channels_1d">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.linear_interpolate_masked_channels_1d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">linear_interpolate_masked_channels_1d</span><span class="p">(</span>
+    <span class="n">y</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">bad_channel_mask</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fill masked channels by linear interpolation from good ones.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">bad_channel_mask</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">y</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">good</span> <span class="o">=</span> <span class="o">~</span><span class="n">bad_channel_mask</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">good</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">y</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">size</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">bad_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">bad_channel_mask</span><span class="p">)</span>
+    <span class="n">good_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">good</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">good_idx</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">out</span><span class="p">[</span><span class="n">bad_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="n">good_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+        <span class="k">return</span> <span class="n">out</span>
+    <span class="n">out</span><span class="p">[</span><span class="n">bad_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">bad_idx</span><span class="p">],</span> <span class="n">x</span><span class="p">[</span><span class="n">good_idx</span><span class="p">],</span> <span class="n">y</span><span class="p">[</span><span class="n">good_idx</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<div class="viewcode-block" id="remove_cosmic_rays_1d">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.remove_cosmic_rays_1d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">remove_cosmic_rays_1d</span><span class="p">(</span>
+    <span class="n">y</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">method</span><span class="p">:</span> <span class="n">SingleSpectrumMethod</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">kernel_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="n">threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">5.0</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove sharp positive spikes from one 1D spectrum (PL-style).</span>
+
+<span class="sd">    Operates on the raw counts / intensity array (only masked indices change).</span>
+<span class="sd">    Cosmic rays: **positive** excursions vs a robust noise model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    y</span>
+<span class="sd">        One spectral trace (any numeric dtype; cast to float).</span>
+<span class="sd">    method</span>
+<span class="sd">        ``\&quot;median\&quot;`` — ``scipy.signal.medfilt`` reference, MAD on residual,</span>
+<span class="sd">        replace spikes with median-filtered values (default, conservative).</span>
+<span class="sd">        ``\&quot;interpolate\&quot;`` — same detection, replace spikes via ``np.interp``.</span>
+<span class="sd">        ``\&quot;derivative\&quot;`` — neighbour-difference test on ``diff(y)`` MAD;</span>
+<span class="sd">        interior points only; interpolate repairs.</span>
+<span class="sd">    kernel_size</span>
+<span class="sd">        Odd length ``&gt;= 3`` for ``medfilt`` (median / interpolate only).</span>
+<span class="sd">    threshold</span>
+<span class="sd">        Multiplier on MAD-derived noise (larger → fewer detections).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    corrected_y</span>
+<span class="sd">        Same shape as ``y``; unchanged if noise is degenerate or (for</span>
+<span class="sd">        ``interpolate``) if every point would be flagged.</span>
+<span class="sd">    cosmic_mask</span>
+<span class="sd">        Boolean mask, same shape as ``y``; ``True`` were spikes **would** be</span>
+<span class="sd">        corrected. If noise is too small, all ``False``. If all channels are</span>
+<span class="sd">        flagged for ``interpolate``, returns original ``y`` and all-``False``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">y1</span> <span class="o">=</span> <span class="n">_coerce_float_1d_spectrum</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">kernel_size</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">y1</span><span class="o">.</span><span class="n">size</span>
+    <span class="k">if</span> <span class="n">threshold</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">threshold</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;threshold must be positive and finite&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;median&quot;</span><span class="p">,</span> <span class="s2">&quot;interpolate&quot;</span><span class="p">):</span>
+        <span class="n">median_filtered</span> <span class="o">=</span> <span class="n">medfilt</span><span class="p">(</span><span class="n">y1</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="n">kernel_size</span><span class="p">)</span>
+        <span class="n">spike_mask</span><span class="p">,</span> <span class="n">_noise</span> <span class="o">=</span> <span class="n">positive_spike_mask_vs_median_smooth</span><span class="p">(</span>
+            <span class="n">y1</span><span class="p">,</span>
+            <span class="n">median_filtered</span><span class="p">,</span>
+            <span class="n">threshold</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">spike_mask</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">y1</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">spike_mask</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;median&quot;</span><span class="p">:</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">y1</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">out</span><span class="p">[</span><span class="n">spike_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">median_filtered</span><span class="p">[</span><span class="n">spike_mask</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">spike_mask</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">spike_mask</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">y1</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">linear_interpolate_masked_channels_1d</span><span class="p">(</span><span class="n">y1</span><span class="p">,</span> <span class="n">spike_mask</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">spike_mask</span>
+
+    <span class="n">spike_mask</span> <span class="o">=</span> <span class="n">positive_spike_mask_from_derivative_peaks</span><span class="p">(</span><span class="n">y1</span><span class="p">,</span> <span class="n">threshold</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">spike_mask</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">y1</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">spike_mask</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">linear_interpolate_masked_channels_1d</span><span class="p">(</span><span class="n">y1</span><span class="p">,</span> <span class="n">spike_mask</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">spike_mask</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Ecole Polytechnique Palaiseau.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
