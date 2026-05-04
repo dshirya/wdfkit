@@ -19,12 +19,15 @@ from .blocks.wxdm import parse_wxdm
 from .blocks.wxis import parse_wxis
 from .blocks.xlst import parse_xlst
 from .blocks.ylst import parse_ylst
+from .memory_check import check_memory
 from .parse_context import ParseContext
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-def read_wdf_file(filename, verbose, time_coord, spectral_dim=None):
+def read_wdf_file(
+    filename, verbose, time_coord, spectral_dim=None, chunks=False
+):
     """Parse a WiRE WDF file (invoked by
     :class:`~wdfkit.reader.WDFReader`).
 
@@ -33,6 +36,9 @@ def read_wdf_file(filename, verbose, time_coord, spectral_dim=None):
     spectral_dim
         Passed to :func:`~wdfkit.spectral.resolve_spectral_axis` during
         ``XLST`` handling.
+    chunks
+        ``False`` for eager NumPy reading (default); ``True`` or an ``int``
+        MB value for lazy Dask-backed reading.
     """
     try:
         file_obj = open(filename, "rb")
@@ -48,6 +54,7 @@ def read_wdf_file(filename, verbose, time_coord, spectral_dim=None):
         spectral_dim=spectral_dim,
         filesize=filesize,
         f=file_obj,
+        chunks=chunks,
     )
 
     try:
@@ -62,6 +69,7 @@ def read_wdf_file(filename, verbose, time_coord, spectral_dim=None):
             for key, val in ctx.map_params.items():
                 print(f"{key:-<40s} : \t{val}")
 
+        check_memory(ctx)
         parse_data(ctx)
         parse_xlst(ctx)
         parse_ylst(ctx)
