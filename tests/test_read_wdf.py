@@ -118,3 +118,29 @@ def test_spectral_dim_override_restores_legacy_name():
     da, _ = WDFReader(path, spectral_dim="shifts")
     assert dict(da.sizes) == {"Time": 1, "shifts": 9341}
     assert da["shifts"].attrs.get("units") == "nm"
+
+
+def test_exposure_time_and_laser_power_single_scan():
+    """ExposureTime and LaserPower are read from WXDM/WXIS blocks."""
+    path = TEST_DATA / "test.wdf"
+    da, _ = WDFReader(path)
+
+    # Exposure Time: stored as int ms in WXDM, exposed as float seconds.
+    assert "ExposureTime" in da.attrs
+    assert np.isclose(da.attrs["ExposureTime"], 10.0)
+
+    # Laser Power: ND Transmission % from WXIS, stored as float percent.
+    assert "LaserPower" in da.attrs
+    assert np.isclose(da.attrs["LaserPower"], 10.0)
+
+
+def test_exposure_time_and_laser_power_map():
+    """ExposureTime and LaserPower are read correctly for 2-D map data."""
+    path = TEST_DATA / "test_2.wdf"
+    da, _ = WDFReader(path)
+
+    assert "ExposureTime" in da.attrs
+    assert np.isclose(da.attrs["ExposureTime"], 10.0)
+
+    assert "LaserPower" in da.attrs
+    assert np.isclose(da.attrs["LaserPower"], 5.0)

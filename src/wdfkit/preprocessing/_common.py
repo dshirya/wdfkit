@@ -54,7 +54,7 @@ def with_new_values(
     ``treatments``."""
 
     out = template.copy(data=values)
-    treats = dict(out.attrs.get("treatments") or {})
+    treats = dict(out.attrs.get("Treatments") or {})
     prev = treats.get(treatment_key, {})
     treats[treatment_key] = {**prev, **treatment_value}
     out.attrs["treatments"] = treats
