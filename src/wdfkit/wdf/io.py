@@ -15,6 +15,8 @@ from .blocks.origin import parse_orgn, print_coord_lengths_if_verbose
 from .blocks.wdf1 import parse_wdf1
 from .blocks.whtl import parse_whtl
 from .blocks.wmap import parse_wmap
+from .blocks.wxdm import parse_wxdm
+from .blocks.wxis import parse_wxis
 from .blocks.xlst import parse_xlst
 from .blocks.ylst import parse_ylst
 from .parse_context import ParseContext
@@ -65,6 +67,8 @@ def read_wdf_file(filename, verbose, time_coord, spectral_dim=None):
         parse_ylst(ctx)
         parse_whtl(ctx)
         parse_orgn(ctx)
+        parse_wxdm(ctx)
+        parse_wxis(ctx)
         print_coord_lengths_if_verbose(ctx)
 
         return assemble_data_array(ctx)
