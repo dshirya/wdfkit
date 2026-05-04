@@ -190,9 +190,8 @@ def test_cosmic_ray_degenerate_map_uses_single_path():
     assert out.values[0, 0, 30] < 100.0
 
 
-def test_cosmic_ray_rejects_series_like_multispectrum(map_da):
-    path = TEST_DATA / "test.wdf"
-    da2, _ = WDFReader(path)
-    fake_series = xr.concat([da2, da2], dim="Time")
+def test_cosmic_ray_rejects_unsupported_ndim(map_da):
+    # 4-D has no supported code path and must raise.
+    fake_4d = map_da.expand_dims("Batch")
     with pytest.raises(ValueError, match="CosmicRayRemover"):
-        CosmicRayRemover().transform(fake_series)
+        CosmicRayRemover().transform(fake_4d)

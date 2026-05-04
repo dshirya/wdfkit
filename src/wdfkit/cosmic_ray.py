@@ -31,9 +31,10 @@ class CosmicRayRemover:
     **per-λ scaled MAD** cutoffs and noisy-band ``relax_λ``; repair by
     **spectral interpolation** (not copying the full median surface).
 
-    **Single spectrum** (2D ``(1, n_spectral)`` or 1×1 map): see
-    :func:`remove_cosmic_rays_1d` — ``scipy.signal.medfilt``, MAD-based
-    positive spike detection, optional interpolation repair.
+    **Single spectrum / line scan** (2D or 1×1 map): see
+    :func:`remove_cosmic_rays_1d` — up to ``max_passes`` iterations of
+    ``scipy.signal.medfilt``-based MAD detection, mask dilation by 1 channel,
+    and linear-interpolation repair from the original signal.
 
     Parameters
     ----------
@@ -67,12 +68,20 @@ class CosmicRayRemover:
         Map path: require ``residual > cutoff *`` this factor (> 1 stricter,
         fewer false positives). Use ``1.0`` for the legacy strict inequality.
     single_spectrum_method
-        ``\"median\"``, ``\"interpolate\"``, or ``\"derivative\"``.
+        ``\"median\"`` or ``\"interpolate\"`` (both use medfilt detection and
+        linear-interpolation repair — equivalent in practice), or
+        ``\"derivative\"`` (neighbour-difference peak test).
     kernel_size
         Odd, ``>= 3``. Passed to ``medfilt`` for single-spectrum median-based
         methods.
     threshold
         Single-spectrum only: spike cutoff is ``threshold * MAD_noise``.
+        Lower → more aggressive (try ``3.5``–``4.0`` for noisy spectra).
+    max_passes
+        Single-spectrum only: number of detection–repair iterations (default
+        3).  Each pass runs on the already-repaired signal so that large spikes
+        no longer mask smaller ones.  ``1`` replicates old single-pass
+        behaviour.
     spectral_dim
         Name of the spectral axis (default: last dimension). Used for harmonic
         cleanup and when the spectral dimension is not last.
@@ -84,6 +93,7 @@ class CosmicRayRemover:
     single_spectrum_method: SingleSpectrumMethod = "median"
     kernel_size: int = 5
     threshold: float = 5.0
+    max_passes: int = 3
     spectral_dim: str | None = None
     map_mad_multiplier: float = 7.0
     map_noisy_channel_relax_min: float = 0.82
@@ -105,6 +115,8 @@ class CosmicRayRemover:
             )
         if self.threshold <= 0 or not np.isfinite(self.threshold):
             raise ValueError("threshold must be positive and finite")
+        if self.max_passes < 1:
+            raise ValueError("max_passes must be >= 1")
         if self.sensitivity <= 0:
             raise ValueError("sensitivity must be > 0")
         if not 0 < self.width <= 1:
@@ -145,8 +157,29 @@ class CosmicRayRemover:
             spectral_dim=self.spectral_dim,
         )
 
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _da_label(da: xr.DataArray) -> str:
+        """Short human-readable identifier for error messages."""
+        parts: list[str] = []
+        if da.name:
+            parts.append(f"name={da.name!r}")
+        for key in ("Title", "filename", "source"):
+            if key in da.attrs:
+                parts.append(f"{key}={da.attrs[key]!r}")
+                break
+        return ", ".join(parts) if parts else "unnamed DataArray"
+
     def remove_cosmic_rays(self, spectrum: xr.DataArray) -> xr.DataArray:
         """Spike removal only (no harmonic notch)."""
+        # Treat a 2-D line scan (n_spatial, n_spectral) as a one-row map.
+        if spectrum.ndim == 2 and spectrum.shape[0] > 1:
+            tmp = spectrum.expand_dims(dim="__x__", axis=1)
+            out = self.remove_cosmic_rays(tmp)
+            return out.squeeze("__x__", drop=True)
         if spectrum.ndim == 3:
             ny, nx = spectrum.shape[0], spectrum.shape[1]
             if ny * nx <= 1:
@@ -181,9 +214,11 @@ class CosmicRayRemover:
         if spectrum.ndim == 2 and spectrum.shape[0] == 1:
             return self._single_spectrum_output(spectrum, spectrum.values[0])
         raise ValueError(
-            "CosmicRayRemover supports 3D maps or a single spectrum as 2D "
-            "(1, n_spectral); got "
-            f"ndim={spectrum.ndim}, shape={spectrum.shape}"
+            "CosmicRayRemover supports 3-D maps (ny, nx, n_spectral), "
+            "2-D line scans (n_spatial, n_spectral), or a single spectrum "
+            "as (1, n_spectral); got "
+            f"ndim={spectrum.ndim}, shape={spectrum.shape} "
+            f"[{self._da_label(spectrum)}]"
         )
 
     def remove_cosmic_rays_with_diagnostics(
@@ -203,6 +238,11 @@ class CosmicRayRemover:
         For 2D single-spectrum input, diagnostics contain ``cosmic_mask`` and
         ``corrected_1d`` (the 1D corrected intensity).
         """
+        # Treat a 2-D line scan (n_spatial, n_spectral) as a one-row map.
+        if spectrum.ndim == 2 and spectrum.shape[0] > 1:
+            tmp = spectrum.expand_dims(dim="__x__", axis=1)
+            out, diag = self.remove_cosmic_rays_with_diagnostics(tmp)
+            return out.squeeze("__x__", drop=True), diag
         if spectrum.ndim == 3:
             ny, nx = spectrum.shape[0], spectrum.shape[1]
             if ny * nx <= 1:
@@ -213,11 +253,13 @@ class CosmicRayRemover:
                     self.single_spectrum_method,
                     kernel_size=self.kernel_size,
                     threshold=self.threshold,
+                    max_passes=self.max_passes,
                 )
                 meta_1d: dict[str, Any] = {
                     "single_spectrum_method": self.single_spectrum_method,
                     "kernel_size": self.kernel_size,
                     "threshold": self.threshold,
+                    "max_passes": self.max_passes,
                 }
                 if np.any(mask):
                     meta_1d["CRs found (spectral indices)"] = list(
@@ -264,11 +306,13 @@ class CosmicRayRemover:
                 self.single_spectrum_method,
                 kernel_size=self.kernel_size,
                 threshold=self.threshold,
+                max_passes=self.max_passes,
             )
             meta_1d = {
                 "single_spectrum_method": self.single_spectrum_method,
                 "kernel_size": self.kernel_size,
                 "threshold": self.threshold,
+                "max_passes": self.max_passes,
             }
             if np.any(mask):
                 meta_1d["CRs found (spectral indices)"] = list(
@@ -282,10 +326,11 @@ class CosmicRayRemover:
             )
             return out, {"cosmic_mask": mask, "corrected_1d": corrected}
         raise ValueError(
-            "CosmicRayRemover supports 3D maps or a single spectrum as 2D "
-            "(1, n_spectral); got "
-            f"ndim={spectrum.ndim}, "
-            f"shape={spectrum.shape}"
+            "CosmicRayRemover supports 3-D maps (ny, nx, n_spectral), "
+            "2-D line scans (n_spatial, n_spectral), or a single spectrum "
+            "as (1, n_spectral); got "
+            f"ndim={spectrum.ndim}, shape={spectrum.shape} "
+            f"[{self._da_label(spectrum)}]"
         )
 
     def remove(self, spectrum: xr.DataArray) -> xr.DataArray:
@@ -319,11 +364,13 @@ class CosmicRayRemover:
             self.single_spectrum_method,
             kernel_size=self.kernel_size,
             threshold=self.threshold,
+            max_passes=self.max_passes,
         )
         meta: dict[str, Any] = {
             "single_spectrum_method": self.single_spectrum_method,
             "kernel_size": self.kernel_size,
             "threshold": self.threshold,
+            "max_passes": self.max_passes,
         }
         if np.any(mask):
             meta["CRs found (spectral indices)"] = list(np.flatnonzero(mask))

@@ -38,6 +38,14 @@ def _coerce_float_1d_spectrum(
     return arr
 
 
+def _dilate_mask_1d(mask: np.ndarray) -> np.ndarray:
+    """Expand a boolean mask by 1 channel on each side."""
+    out = mask.copy()
+    out[1:] |= mask[:-1]
+    out[:-1] |= mask[1:]
+    return out
+
+
 def positive_spike_mask_vs_median_smooth(
     y: np.ndarray,
     median_smoothed_y: np.ndarray,
@@ -120,62 +128,85 @@ def remove_cosmic_rays_1d(
     *,
     kernel_size: int = 5,
     threshold: float = 5.0,
+    max_passes: int = 3,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Remove sharp positive spikes from one 1D spectrum (PL-style).
 
     Operates on the raw counts / intensity array (only masked indices change).
     Cosmic rays: **positive** excursions vs a robust noise model.
 
+    The algorithm runs up to ``max_passes`` iterations.  Each pass:
+
+    1. Detects new spikes on the current (already-repaired) signal.
+    2. **Dilates** the new spike mask by 1 channel on each side to catch
+       sub-threshold spike edges.
+    3. Accumulates into a single cumulative mask across all passes.
+    4. **Repairs** by linear interpolation from the *original* signal at all
+       cumulative masked positions — avoids chaining interpolation errors.
+
+    Early termination when a pass finds no new spikes.
+
     Parameters
     ----------
     y
         One spectral trace (any numeric dtype; cast to float).
     method
-        ``\"median\"`` — ``scipy.signal.medfilt`` reference, MAD on residual,
-        replace spikes with median-filtered values (default, conservative).
-        ``\"interpolate\"`` — same detection, replace spikes via ``np.interp``.
+        ``\"median\"`` or ``\"interpolate\"`` — ``scipy.signal.medfilt``
+        reference signal, MAD on residual for detection (both methods now
+        repair identically via linear interpolation).
         ``\"derivative\"`` — neighbour-difference test on ``diff(y)`` MAD;
-        interior points only; interpolate repairs.
+        interior points only.
     kernel_size
-        Odd length ``>= 3`` for ``medfilt`` (median / interpolate only).
+        Odd length ``>= 3`` for ``medfilt`` (median / interpolate methods).
     threshold
         Multiplier on MAD-derived noise (larger → fewer detections).
+    max_passes
+        Maximum number of detection–repair iterations (default 3).  Use
+        ``1`` for the old single-pass behaviour.
 
     Returns
     -------
     corrected_y
-        Same shape as ``y``; unchanged if noise is degenerate or (for
-        ``interpolate``) if every point would be flagged.
+        Same shape as ``y``; unchanged if no spikes are found or if noise is
+        degenerate.
     cosmic_mask
-        Boolean mask, same shape as ``y``; ``True`` were spikes **would** be
-        corrected. If noise is too small, all ``False``. If all channels are
-        flagged for ``interpolate``, returns original ``y`` and all-``False``.
+        Boolean mask, same shape as ``y``; ``True`` at all channels that were
+        corrected (including dilation neighbours).  All ``False`` when nothing
+        was found or when the mask would cover the entire spectrum.
     """
     y1 = _coerce_float_1d_spectrum(y, method, kernel_size)
     n = y1.size
     if threshold <= 0 or not np.isfinite(threshold):
         raise ValueError("threshold must be positive and finite")
+    if max_passes < 1:
+        raise ValueError("max_passes must be >= 1")
 
-    if method in ("median", "interpolate"):
-        median_filtered = medfilt(y1, kernel_size=kernel_size)
-        spike_mask, _noise = positive_spike_mask_vs_median_smooth(
-            y1,
-            median_filtered,
-            threshold,
-        )
-        if not np.any(spike_mask):
-            return y1.copy(), spike_mask
-        if method == "median":
-            out = y1.copy()
-            out[spike_mask] = median_filtered[spike_mask]
-            return out, spike_mask
-        if np.all(spike_mask):
+    cumulative_mask = np.zeros(n, dtype=bool)
+    current = y1.copy()
+
+    for _ in range(max_passes):
+        if method in ("median", "interpolate"):
+            median_filtered = medfilt(current, kernel_size=kernel_size)
+            new_mask, _ = positive_spike_mask_vs_median_smooth(
+                current, median_filtered, threshold
+            )
+        else:  # derivative
+            new_mask = positive_spike_mask_from_derivative_peaks(
+                current, threshold
+            )
+
+        if not np.any(new_mask):
+            break
+
+        new_mask = _dilate_mask_1d(new_mask)
+        cumulative_mask |= new_mask
+
+        if np.all(cumulative_mask):
+            # Every channel is masked — cannot interpolate; bail out cleanly.
             return y1.copy(), np.zeros(n, dtype=bool)
-        out = linear_interpolate_masked_channels_1d(y1, spike_mask)
-        return out, spike_mask
 
-    spike_mask = positive_spike_mask_from_derivative_peaks(y1, threshold)
-    if not np.any(spike_mask):
-        return y1.copy(), spike_mask
-    out = linear_interpolate_masked_channels_1d(y1, spike_mask)
-    return out, spike_mask
+        # Always repair with linear interp from the *original* signal so that
+        # each pass detects against a clean baseline.
+        current = linear_interpolate_masked_channels_1d(y1, cumulative_mask)
+
+    return current, cumulative_mask
