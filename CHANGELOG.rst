@@ -11,4 +11,3 @@ Release notes
 
 * README.rst file updated.
 * Logo added to README.rst file.
-
