@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 import pytest
 import xarray as xr
@@ -160,10 +158,6 @@ def test_normalize_spectral_dim_when_not_last_on_map(tiny_map_da):
     assert np.all(np.isfinite(out.values))
 
 
-def test_normalize_invalid_method_warns(tiny_spectral_da):
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        out = normalize(tiny_spectral_da, method="not_a_real_method")
-    assert len(w) == 1
-    assert out.shape == tiny_spectral_da.shape
-    assert np.all(np.isfinite(out.values))
+def test_normalize_invalid_method_raises(tiny_spectral_da):
+    with pytest.raises(ValueError, match="not_a_real_method"):
+        normalize(tiny_spectral_da, method="not_a_real_method")

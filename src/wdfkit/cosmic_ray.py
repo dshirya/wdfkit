@@ -5,13 +5,13 @@ High-level cosmic-ray removal: :class:`CosmicRayRemover` for maps and singles.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import xarray as xr
 
+from .internal.utils import ensure_in_memory
 from .preprocessing._common import resolve_spectral_dim, with_new_values
 from .preprocessing.cosmic_ray_1d import (
     SingleSpectrumMethod,
@@ -176,27 +176,30 @@ class CosmicRayRemover:
 
     @staticmethod
     def _maybe_compute_for_map(spectrum: xr.DataArray) -> xr.DataArray:
-        """If ``spectrum`` is Dask-backed, load it into RAM now and warn.
-
-        Cosmic-ray removal on a 3D map uses a spatial disk median that
-        requires all spatial neighbours simultaneously.  This is inherently a
-        global operation that cannot be computed chunk-by-chunk without
-        overlap handling, so the full array must be in memory.
-        """
-        if spectrum.chunks is not None:
-            size_gb = spectrum.nbytes / 2**30
-            warnings.warn(
-                f"CosmicRayRemover received a Dask-backed DataArray "
-                f"(shape {tuple(spectrum.shape)}, ~{size_gb:.2f} GB). "
+        """If ``spectrum`` is Dask-backed, load it into RAM now and warn."""
+        return ensure_in_memory(
+            spectrum,
+            caller="CosmicRayRemover",
+            reason=(
                 "The spatial disk-median algorithm requires all pixels in "
-                "memory simultaneously. Computing the full array now.\n"
+                "memory simultaneously.\n"
                 "If this causes an out-of-memory error, consider splitting "
-                "the map into sub-regions before CR removal.",
-                UserWarning,
-                stacklevel=3,
-            )
-            return spectrum.compute()
-        return spectrum
+                "the map into sub-regions before CR removal."
+            ),
+            stacklevel=3,
+        )
+
+    def _build_cr_meta_1d(self, mask: np.ndarray) -> dict[str, Any]:
+        """Build the metadata dict for a 1D cosmic-ray correction."""
+        meta: dict[str, Any] = {
+            "single_spectrum_method": self.single_spectrum_method,
+            "kernel_size": self.kernel_size,
+            "threshold": self.threshold,
+            "max_passes": self.max_passes,
+        }
+        if np.any(mask):
+            meta["CRs found (spectral indices)"] = list(np.flatnonzero(mask))
+        return meta
 
     def remove_cosmic_rays(self, spectrum: xr.DataArray) -> xr.DataArray:
         """Spike removal only (no harmonic notch)."""
@@ -273,11 +276,14 @@ class CosmicRayRemover:
             ny, nx = spectrum.shape[0], spectrum.shape[1]
             if ny * nx <= 1:
                 resolve_spectral_dim(spectrum, self.spectral_dim)
-                sp = (
-                    spectrum.compute().values.reshape(-1)
-                    if spectrum.chunks is not None
-                    else spectrum.values.reshape(-1)
-                )
+                sp = ensure_in_memory(
+                    spectrum,
+                    caller="CosmicRayRemover",
+                    reason=(
+                        "Single-spectrum 1D removal requires a NumPy array."
+                    ),
+                    stacklevel=3,
+                ).values.reshape(-1)
                 corrected, mask = remove_cosmic_rays_1d(
                     sp,
                     self.single_spectrum_method,
@@ -285,16 +291,7 @@ class CosmicRayRemover:
                     threshold=self.threshold,
                     max_passes=self.max_passes,
                 )
-                meta_1d: dict[str, Any] = {
-                    "single_spectrum_method": self.single_spectrum_method,
-                    "kernel_size": self.kernel_size,
-                    "threshold": self.threshold,
-                    "max_passes": self.max_passes,
-                }
-                if np.any(mask):
-                    meta_1d["CRs found (spectral indices)"] = list(
-                        np.flatnonzero(mask)
-                    )
+                meta_1d = self._build_cr_meta_1d(mask)
                 out = with_new_values(
                     spectrum,
                     corrected.reshape(spectrum.shape),
@@ -339,16 +336,7 @@ class CosmicRayRemover:
                 threshold=self.threshold,
                 max_passes=self.max_passes,
             )
-            meta_1d = {
-                "single_spectrum_method": self.single_spectrum_method,
-                "kernel_size": self.kernel_size,
-                "threshold": self.threshold,
-                "max_passes": self.max_passes,
-            }
-            if np.any(mask):
-                meta_1d["CRs found (spectral indices)"] = list(
-                    np.flatnonzero(mask)
-                )
+            meta_1d = self._build_cr_meta_1d(mask)
             out = with_new_values(
                 spectrum,
                 corrected.reshape(spectrum.shape),
@@ -387,8 +375,7 @@ class CosmicRayRemover:
         da_template: xr.DataArray,
         spectrum_1d: np.ndarray,
     ) -> xr.DataArray:
-        """1D robust spike removal without global intensity
-        rescaling."""
+        """1D robust spike removal without global intensity rescaling."""
         resolve_spectral_dim(da_template, self.spectral_dim)
         corrected, mask = remove_cosmic_rays_1d(
             spectrum_1d,
@@ -397,19 +384,11 @@ class CosmicRayRemover:
             threshold=self.threshold,
             max_passes=self.max_passes,
         )
-        meta: dict[str, Any] = {
-            "single_spectrum_method": self.single_spectrum_method,
-            "kernel_size": self.kernel_size,
-            "threshold": self.threshold,
-            "max_passes": self.max_passes,
-        }
-        if np.any(mask):
-            meta["CRs found (spectral indices)"] = list(np.flatnonzero(mask))
         return with_new_values(
             da_template,
             corrected.reshape(da_template.shape),
             "Cosmic Ray Correction",
-            meta,
+            self._build_cr_meta_1d(mask),
         )
 
 

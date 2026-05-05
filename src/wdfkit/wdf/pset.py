@@ -201,14 +201,10 @@ def decode_pset(data: bytes) -> dict[str, Any]:
     return _extract_values(data, key_map, values_start, key_def_start)
 
 
-def find_in_pset(
-    data: bytes, key_name: str, max_depth: int = 3
-) -> Optional[Any]:
-    """Search for *key_name* in a PSET blob, recursing into nested PSETs.
+def find_in_pset(data: bytes, key_name: str) -> Optional[Any]:
+    """Search for *key_name* in a PSET blob.
 
-    This is a lightweight alternative to :func:`decode_pset` when only one
-    specific key is needed.  Returns the first matching value, or ``None``.
-    ``max_depth`` guards against unbounded recursion on malformed data.
+    Decodes the entire blob via :func:`decode_pset` and returns the value
+    for *key_name*, or ``None`` if the key is absent.
     """
-    result = decode_pset(data)
-    return result.get(key_name)
+    return decode_pset(data).get(key_name)

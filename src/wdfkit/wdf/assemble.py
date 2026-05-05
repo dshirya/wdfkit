@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -13,12 +14,34 @@ import xarray as xr
 from ..internal.utils import hr_filesize
 from .parse_context import ParseContext
 
+# Keys that should appear immediately after "WdfFlag" in the attrs dict.
+_PRIORITY_ATTRS_AFTER_FLAG = ("ExposureTime", "LaserPower")
+
+
+def _reorder_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
+    """Return *attrs* with ``ExposureTime`` and ``LaserPower`` moved to
+    appear right after ``WdfFlag``."""
+    priority = {k: attrs[k] for k in _PRIORITY_ATTRS_AFTER_FLAG if k in attrs}
+    if not priority:
+        return attrs
+    result: dict[str, Any] = {}
+    for key, val in attrs.items():
+        if key in priority:
+            continue  # will be inserted after WdfFlag
+        result[key] = val
+        if key == "WdfFlag":
+            result.update(priority)
+    # If WdfFlag was absent, append priority keys at the front instead.
+    if "WdfFlag" not in result:
+        result = {**priority, **result}
+    return result
+
 
 def warn_if_incomplete_recording(ctx: ParseContext) -> None:
     if ctx.params["Count"] == ctx.params["Capacity"]:
         return
     warnings.warn(
-        f"Not all spectra was recorded. \nExpected {ctx.nspectra}, "
+        f"Not all spectra were recorded. \nExpected {ctx.nspectra}, "
         f"but only {ctx.ncollected} spectra were recorded.\n"
         f"The {ctx.nspectra - ctx.ncollected} missing spectra will be filled "
         "with zeros."
@@ -44,7 +67,11 @@ def assemble_data_array(ctx: ParseContext) -> tuple[xr.DataArray, object]:
         dims=("points", sdim),
         coords=ctx.coord_dict,
     )
-    da = da.sortby([sdim, "Time"])
+
+    # Sort each dimension separately so that each sortby produces a 1D index.
+    # Passing multiple keys from different dims to a single sortby call would
+    # force a multi-dimensional fancy index which Dask does not support.
+    da = da.sortby(sdim).sortby("Time")
 
     new_coord_dict = {sdim: da[sdim]}
     ctx.coord_dict.pop(sdim)
@@ -68,10 +95,16 @@ def assemble_data_array(ctx: ParseContext) -> tuple[xr.DataArray, object]:
     da.attrs["FileSize"] = hr_filesize(ctx.filesize)
     da.attrs["treatments"] = dict()
 
+    da.attrs = _reorder_attrs(da.attrs)
+
     return da, ctx.img
 
 
-def _assemble_map_scan(ctx, da, new_coord_dict):
+def _assemble_map_scan(
+    ctx: ParseContext,
+    da: xr.DataArray,
+    new_coord_dict: dict[str, Any],
+) -> tuple[xr.DataArray, dict[str, Any], str, str, int, int]:
     coord_dict = ctx.coord_dict
     map_params = ctx.map_params
     params = ctx.params
@@ -91,7 +124,11 @@ def _assemble_map_scan(ctx, da, new_coord_dict):
                 )
             )
 
-    assert coldim in ctx.origin_labels, f"No {coldim} in coords?"
+    if coldim not in ctx.origin_labels:
+        raise ValueError(
+            f"Expected coordinate {coldim!r} not found in parsed origin "
+            f"labels {ctx.origin_labels!r}."
+        )
     da = da.sortby(coldim)
     x_coord_vals, x_attrs = np.unique(da[coldim].data), da[coldim].attrs
     ncols = len(x_coord_vals)
@@ -101,7 +138,11 @@ def _assemble_map_scan(ctx, da, new_coord_dict):
     }
     coord_dict.pop(coldim)
 
-    assert rowdim in ctx.origin_labels, f"No {rowdim} in coords?"
+    if rowdim not in ctx.origin_labels:
+        raise ValueError(
+            f"Expected coordinate {rowdim!r} not found in parsed origin "
+            f"labels {ctx.origin_labels!r}."
+        )
     da = da.sortby(rowdim)
     y_coord_vals, y_attrs = np.unique(da[rowdim].data), da[rowdim].attrs
     nrows = len(y_coord_vals)
@@ -136,7 +177,11 @@ def _assemble_map_scan(ctx, da, new_coord_dict):
     return da, new_coord_dict, rowdim, coldim, nrows, ncols
 
 
-def _assemble_series_scan(ctx, da, new_coord_dict):
+def _assemble_series_scan(
+    ctx: ParseContext,
+    da: xr.DataArray,
+    new_coord_dict: dict[str, Any],
+) -> tuple[xr.DataArray, dict[str, Any], str, None, int, int]:
     params = ctx.params
     map_params = ctx.map_params
     sdim = ctx.spectral_dim_name
@@ -144,7 +189,11 @@ def _assemble_series_scan(ctx, da, new_coord_dict):
 
     rowdim = "Time"
     coldim = None
-    assert rowdim in ctx.origin_labels, f"No {rowdim} in coords?"
+    if rowdim not in ctx.origin_labels:
+        raise ValueError(
+            f"Expected coordinate {rowdim!r} not found in parsed origin "
+            f"labels {ctx.origin_labels!r}."
+        )
     y_coord_vals, y_attrs = np.unique(da[rowdim].data), da[rowdim].attrs
     nrows = len(y_coord_vals)
     ncols = 1

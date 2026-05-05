@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import datetime, timezone
 
 import numpy as np
@@ -76,12 +77,9 @@ def parse_orgn(ctx: ParseContext) -> None:
                     ),
                 }
             elif data_type_flag in (16, 17):
-                np.array(
-                    np.round(
-                        read_from_file(ctx.f, "<Q", count=ctx.nspectra),
-                        2,
-                    )
-                )
+                # uint64 origin type (e.g. internal Renishaw flags): advance
+                # the file position but do not store — interpretation unknown.
+                read_from_file(ctx.f, "<Q", count=ctx.nspectra)
             elif data_type_flag not in (0, 11, 16, 17):
                 coord_values = np.array(
                     np.round(
@@ -112,5 +110,9 @@ def print_coord_lengths_if_verbose(ctx: ParseContext) -> None:
                 for c in ctx.coord_dict.keys()
             ]
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        warnings.warn(
+            f"Could not print coordinate lengths: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )

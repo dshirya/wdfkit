@@ -25,4 +25,5 @@ def parse_ylst(ctx: ParseContext) -> None:
         y_values_count = int((ctx.blocks["BlockSizes"][i] - 24) / 4)
         if y_values_count > 1:
             y_values = read_from_file(ctx.f, "<f", count=y_values_count)
-            print(y_values)
+            if ctx.verbose:
+                print(y_values)

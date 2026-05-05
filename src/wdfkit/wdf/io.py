@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 
-from PIL import ImageFile
+import xarray as xr
 
 from .assemble import assemble_data_array
 from .block_index import scan_blocks
@@ -22,12 +22,14 @@ from .blocks.ylst import parse_ylst
 from .memory_check import check_memory
 from .parse_context import ParseContext
 
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-
 
 def read_wdf_file(
-    filename, verbose, time_coord, spectral_dim=None, chunks=False
-):
+    filename: str | os.PathLike[str],
+    verbose: bool,
+    time_coord: str | None,
+    spectral_dim: str | None = None,
+    chunks: bool | int = False,
+) -> tuple[xr.DataArray, object]:
     """Parse a WiRE WDF file (invoked by
     :class:`~wdfkit.reader.WDFReader`).
 
@@ -42,9 +44,9 @@ def read_wdf_file(
     """
     try:
         file_obj = open(filename, "rb")
-        print(f'Reading the file: "{filename.split("/")[-1]}"\n')
-    except IOError:
-        raise IOError(f"File {filename} does not exist!") from None
+        print(f'Reading the file: "{str(filename).split("/")[-1]}"\n')
+    except IOError as e:
+        raise IOError(f"File {filename} does not exist!") from e
 
     filesize = os.path.getsize(filename)
     ctx = ParseContext(

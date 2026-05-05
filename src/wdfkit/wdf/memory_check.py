@@ -25,10 +25,9 @@ def check_memory(ctx: ParseContext) -> None:
 
     Behaviour
     ---------
-    - **chunks already enabled** (``ctx.chunks`` is not ``False``): skip the
-      hard-stop; only warn if a *single chunk* would exceed available RAM (the
-      chunk-size formula in ``parse_data`` is designed to prevent this, but it
-      is worth catching edge cases).
+    - **chunks already enabled** (``ctx.chunks`` is not ``False``): no check
+      is performed — the data will be loaded lazily so the full array never
+      needs to reside in RAM at parse time.
     - **chunks disabled** (default): raise ``MemoryError`` if the full array
       exceeds available RAM; emit ``UserWarning`` if it exceeds 75 % of
       available RAM.
