@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 import xarray as xr
 from sklearn import preprocessing
 
+from ..internal.utils import ensure_in_memory
 from ._common import (
     reshape_row_stack_to,
     resolve_spectral_dim,
@@ -80,12 +80,12 @@ def _normalize_numpy_block(
             quantile_range=quantile,
         )
     else:
-        warnings.warn(
+        raise ValueError(
+            f"normalize method {method!r} is not recognised. "
             '"method" must be one of '
             '["l1", "l2", "max", "min_max", "wave_number", '
-            '"robust_scale", "area"]'
+            '"robust_scale", "area"].'
         )
-        out = spectra_2d.copy()
 
     out = out - np.min(out, axis=-1, keepdims=True)
     return out
@@ -112,6 +112,9 @@ def _make_apply_ufunc_kernel(
         return out_2d.reshape(orig_shape)
 
     return _kernel
+
+
+_ALL_METHODS = _PER_SPECTRUM_METHODS | _GLOBAL_METHODS
 
 
 def normalize(
@@ -153,6 +156,12 @@ def normalize(
     Same type as ``input_spectra`` with updated ``attrs[\"treatments\"]`` for
     DataArray output.
     """
+    if method not in _ALL_METHODS:
+        raise ValueError(
+            f"normalize method {method!r} is not recognised. "
+            f'"method" must be one of {sorted(_ALL_METHODS)!r}.'
+        )
+
     if isinstance(input_spectra, xr.DataArray):
         return _normalize_dataarray(
             input_spectra, method, spectral_dim, kwargs
@@ -198,16 +207,17 @@ def _normalize_dataarray(
     is_dask = da_w.chunks is not None
 
     if is_dask and method in _GLOBAL_METHODS:
-        warnings.warn(
-            f'normalize(method="{method}") requires statistics across all '
-            "spectra and cannot be computed chunk-by-chunk. "
-            "Loading the full Dask array into RAM now. "
-            "For memory-efficient normalisation use a per-spectrum method "
-            f"({', '.join(sorted(_PER_SPECTRUM_METHODS))}).",
-            UserWarning,
+        da_w = ensure_in_memory(
+            da_w,
+            caller=f'normalize(method="{method}")',
+            reason=(
+                "Requires statistics across all spectra and cannot be "
+                "computed chunk-by-chunk. For memory-efficient normalisation "
+                f"use a per-spectrum method "
+                f"({', '.join(sorted(_PER_SPECTRUM_METHODS))})."
+            ),
             stacklevel=3,
         )
-        da_w = da_w.compute()
         is_dask = False
 
     if is_dask:
