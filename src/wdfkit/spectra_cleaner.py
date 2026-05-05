@@ -9,6 +9,7 @@ Golay or wavelet) without breaking callers.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -134,6 +135,20 @@ class SpectraCleaner:
 
         sdim = resolve_spectral_dim(spectra, self.spectral_dim)
         da_w, orig_order = transpose_spectral_last(spectra, sdim)
+
+        if da_w.chunks is not None:
+            size_gb = da_w.nbytes / 2**30
+            warnings.warn(
+                f"SpectraCleaner (PCA) received a Dask-backed DataArray "
+                f"(shape {tuple(da_w.shape)}, ~{size_gb:.2f} GB). "
+                "PCA requires the full covariance matrix of all spectra and "
+                "cannot be computed chunk-by-chunk. "
+                "Computing the full array into RAM now.",
+                UserWarning,
+                stacklevel=3,
+            )
+            da_w = da_w.compute()
+
         spatial_shape = da_w.shape[:-1]
         n_spectra = int(np.prod(spatial_shape)) if spatial_shape else 1
         if n_spectra < 2:

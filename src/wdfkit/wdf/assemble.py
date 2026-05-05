@@ -124,7 +124,7 @@ def _assemble_map_scan(ctx, da, new_coord_dict):
         }
 
     da = xr.DataArray(
-        da.values.reshape(nrows, ncols, npoints),
+        da.data.reshape(nrows, ncols, npoints),
         dims=(rowdim, coldim, sdim),
         coords=new_coord_dict,
         attrs={
@@ -160,7 +160,7 @@ def _assemble_series_scan(ctx, da, new_coord_dict):
         }
 
     da = xr.DataArray(
-        da.values.reshape(nrows, npoints),
+        da.data.reshape(nrows, npoints),
         dims=(rowdim, sdim),
         coords=new_coord_dict,
         attrs={**params, **map_params},

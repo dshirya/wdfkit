@@ -5,6 +5,7 @@ High-level cosmic-ray removal: :class:`CosmicRayRemover` for maps and singles.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -173,6 +174,30 @@ class CosmicRayRemover:
                 break
         return ", ".join(parts) if parts else "unnamed DataArray"
 
+    @staticmethod
+    def _maybe_compute_for_map(spectrum: xr.DataArray) -> xr.DataArray:
+        """If ``spectrum`` is Dask-backed, load it into RAM now and warn.
+
+        Cosmic-ray removal on a 3D map uses a spatial disk median that
+        requires all spatial neighbours simultaneously.  This is inherently a
+        global operation that cannot be computed chunk-by-chunk without
+        overlap handling, so the full array must be in memory.
+        """
+        if spectrum.chunks is not None:
+            size_gb = spectrum.nbytes / 2**30
+            warnings.warn(
+                f"CosmicRayRemover received a Dask-backed DataArray "
+                f"(shape {tuple(spectrum.shape)}, ~{size_gb:.2f} GB). "
+                "The spatial disk-median algorithm requires all pixels in "
+                "memory simultaneously. Computing the full array now.\n"
+                "If this causes an out-of-memory error, consider splitting "
+                "the map into sub-regions before CR removal.",
+                UserWarning,
+                stacklevel=3,
+            )
+            return spectrum.compute()
+        return spectrum
+
     def remove_cosmic_rays(self, spectrum: xr.DataArray) -> xr.DataArray:
         """Spike removal only (no harmonic notch)."""
         # Treat a 2-D line scan (n_spatial, n_spectral) as a one-row map.
@@ -187,6 +212,7 @@ class CosmicRayRemover:
                     spectrum,
                     spectrum.values.reshape(-1),
                 )
+            spectrum = self._maybe_compute_for_map(spectrum)
             corrected, meta = correct_cosmic_rays_on_map_cube(
                 spectrum.values,
                 sensitivity=self.sensitivity,
@@ -247,7 +273,11 @@ class CosmicRayRemover:
             ny, nx = spectrum.shape[0], spectrum.shape[1]
             if ny * nx <= 1:
                 resolve_spectral_dim(spectrum, self.spectral_dim)
-                sp = spectrum.values.reshape(-1)
+                sp = (
+                    spectrum.compute().values.reshape(-1)
+                    if spectrum.chunks is not None
+                    else spectrum.values.reshape(-1)
+                )
                 corrected, mask = remove_cosmic_rays_1d(
                     sp,
                     self.single_spectrum_method,
@@ -272,6 +302,7 @@ class CosmicRayRemover:
                     meta_1d,
                 )
                 return out, {"cosmic_mask": mask}
+            spectrum = self._maybe_compute_for_map(spectrum)
             corrected, meta, diag = correct_cosmic_rays_on_map_cube(
                 spectrum.values,
                 sensitivity=self.sensitivity,

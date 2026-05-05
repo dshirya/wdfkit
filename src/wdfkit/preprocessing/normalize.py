@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from warnings import warn
+import warnings
+from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -15,6 +16,14 @@ from ._common import (
     transpose_spectral_last,
     with_new_values,
 )
+
+# Methods that normalize each spectrum using only its own values.
+# These are fully parallelisable and work chunk-by-chunk via apply_ufunc.
+_PER_SPECTRUM_METHODS = {"l1", "l2", "max", "min_max", "area"}
+
+# Methods that require statistics across ALL spectra simultaneously.
+# A Dask-backed DataArray will be computed fully before these run.
+_GLOBAL_METHODS = {"wave_number", "robust_scale"}
 
 
 def _trapz_y(
@@ -33,6 +42,78 @@ def _trapz_y(
     return np.trapz(y, x, axis=axis)
 
 
+def _normalize_numpy_block(
+    spectra_2d: np.ndarray,
+    method: str,
+    x_values: np.ndarray,
+    kwargs: dict[str, Any],
+) -> np.ndarray:
+    """Normalize a 2D ``(n_spectra, n_points)`` NumPy array.
+
+    This is the pure-NumPy inner kernel, called directly for ndarray input
+    and as the ``apply_ufunc`` kernel for per-spectrum methods on DataArrays.
+    """
+    if method in ("l1", "l2", "max"):
+        out = preprocessing.normalize(
+            spectra_2d, axis=1, norm=method, copy=False
+        )
+    elif method == "min_max":
+        out = preprocessing.minmax_scale(spectra_2d, axis=1, copy=False)
+    elif method == "area":
+        denom = _trapz_y(spectra_2d, x_values, axis=-1)[:, np.newaxis]
+        denom = np.where(np.abs(denom) < np.finfo(float).eps, 1.0, denom)
+        out = spectra_2d / denom
+    elif method == "wave_number":
+        wave_number = kwargs.get("wave_number", float(np.min(x_values)))
+        idx = int(np.nanargmin(np.abs(x_values - wave_number)))
+        divider = spectra_2d[:, [idx]]
+        mean_divider = float(np.mean(divider))
+        divider = np.where(divider == 0, mean_divider, divider)
+        out = spectra_2d / divider
+    elif method == "robust_scale":
+        quantile = kwargs.get("quantile", (5.0, 95.0))
+        centering = kwargs.get("centering", False)
+        out = preprocessing.robust_scale(
+            spectra_2d,
+            axis=1,
+            with_centering=centering,
+            quantile_range=quantile,
+        )
+    else:
+        warnings.warn(
+            '"method" must be one of '
+            '["l1", "l2", "max", "min_max", "wave_number", '
+            '"robust_scale", "area"]'
+        )
+        out = spectra_2d.copy()
+
+    out = out - np.min(out, axis=-1, keepdims=True)
+    return out
+
+
+def _make_apply_ufunc_kernel(
+    method: str,
+    x_values: np.ndarray,
+    kwargs: dict[str, Any],
+):
+    """Return a function ``(spectra_nd,) → normalized_nd`` for use with
+    ``xr.apply_ufunc``.
+
+    ``apply_ufunc`` with ``input_core_dims=[[sdim]]`` passes the spectral
+    axis as the *last* axis of a plain NumPy array, with all spatial dims
+    flattened along leading axes.  We reshape to 2D, run the kernel, and
+    reshape back.
+    """
+
+    def _kernel(arr: np.ndarray) -> np.ndarray:
+        orig_shape = arr.shape
+        arr_2d = arr.reshape(-1, orig_shape[-1])
+        out_2d = _normalize_numpy_block(arr_2d, method, x_values, kwargs)
+        return out_2d.reshape(orig_shape)
+
+    return _kernel
+
+
 def normalize(
     input_spectra: xr.DataArray | np.ndarray,
     method: str = "robust_scale",
@@ -45,6 +126,15 @@ def normalize(
     For :class:`xarray.DataArray` input, the spectral axis defaults to the
     **last** dimension (e.g. ``nm``, ``raman_shift``, ``shifts``, …). Pass
     ``spectral_dim`` to select another dimension when spectra are not last.
+
+    **Dask-backed DataArrays** are handled transparently:
+
+    - *Per-spectrum methods* (``"l1"``, ``"l2"``, ``"max"``, ``"min_max"``,
+      ``"area"``): processed chunk-by-chunk via ``xr.apply_ufunc`` —
+      no data is loaded into RAM beyond the current chunk.
+    - *Global methods* (``"robust_scale"``, ``"wave_number"``): require
+      statistics across all spectra; the full array is computed first.  A
+      ``UserWarning`` is emitted so you know RAM is being used.
 
     Parameters
     ----------
@@ -64,27 +154,36 @@ def normalize(
     DataArray output.
     """
     if isinstance(input_spectra, xr.DataArray):
-        sdim = resolve_spectral_dim(input_spectra, spectral_dim)
-        da_w, orig_order = transpose_spectral_last(input_spectra, sdim)
-        x_values = da_w[sdim].values
-        spectra = da_w.values.reshape(-1, da_w.shape[-1])
-        target_shape_w = da_w.shape
-        as_xarray = True
+        return _normalize_dataarray(
+            input_spectra, method, spectral_dim, kwargs
+        )
+
+    # --- ndarray path (unchanged) -------------------------------------------
+    spectra = np.asarray(input_spectra)
+    if spectra.ndim != 2:
+        raise ValueError(
+            "ndarray input must be 2D with shape (n_spectra, n_points)"
+        )
+    x_values = kwargs.get("x_values")
+    if x_values is None:
+        x_values = np.arange(spectra.shape[-1])
     else:
-        spectra = np.asarray(input_spectra)
-        if spectra.ndim != 2:
-            raise ValueError(
-                "ndarray input must be 2D with shape (n_spectra, n_points)"
-            )
-        x_values = kwargs.get("x_values")
-        if x_values is None:
-            x_values = np.arange(spectra.shape[-1])
-        else:
-            x_values = np.asarray(x_values)
-        target_shape_w = spectra.shape
-        da_w = None
-        orig_order = None
-        as_xarray = False
+        x_values = np.asarray(x_values)
+    return _normalize_numpy_block(spectra, method, x_values, kwargs).reshape(
+        spectra.shape
+    )
+
+
+def _normalize_dataarray(
+    da: xr.DataArray,
+    method: str,
+    spectral_dim: str | None,
+    kwargs: dict[str, Any],
+) -> xr.DataArray:
+    """DataArray normalisation, Dask-aware."""
+    sdim = resolve_spectral_dim(da, spectral_dim)
+    da_w, orig_order = transpose_spectral_last(da, sdim)
+    x_values = da_w[sdim].values  # always a small NumPy array
 
     meta_keys = (
         "quantile",
@@ -94,62 +193,42 @@ def normalize(
         "spectral_dim",
     )
     meta = {k: kwargs[k] for k in meta_keys if k in kwargs}
-
-    if method in ("l1", "l2", "max"):
-        normalized_spectra = preprocessing.normalize(
-            spectra, axis=1, norm=method, copy=False
-        )
-    elif method == "min_max":
-        normalized_spectra = preprocessing.minmax_scale(
-            spectra, axis=1, copy=False
-        )
-    elif method == "area":
-        denom = _trapz_y(spectra, x_values, axis=-1)[:, np.newaxis]
-        denom = np.where(np.abs(denom) < np.finfo(float).eps, 1.0, denom)
-        normalized_spectra = spectra / denom
-    elif method == "wave_number":
-        wave_number = kwargs.get("wave_number", float(np.min(x_values)))
-        idx = int(np.nanargmin(np.abs(x_values - wave_number)))
-        divider = spectra[:, [idx]]
-        mean_divider = float(np.mean(divider))
-        divider = np.where(divider == 0, mean_divider, divider)
-        normalized_spectra = spectra / divider
-    elif method == "robust_scale":
-        quantile = kwargs.get("quantile", (5.0, 95.0))
-        centering = kwargs.get("centering", False)
-        normalized_spectra = preprocessing.robust_scale(
-            spectra,
-            axis=1,
-            with_centering=centering,
-            quantile_range=quantile,
-        )
-    else:
-        warn(
-            '"method" must be one of '
-            '["l1", "l2", "max", "min_max", "wave_number", '
-            '"robust_scale", "area"]'
-        )
-        normalized_spectra = spectra.copy()
-
-    normalized_spectra = normalized_spectra - np.min(
-        normalized_spectra, axis=-1, keepdims=True
-    )
-
     treatment_payload = {"method": method, **meta}
 
-    if as_xarray:
-        assert da_w is not None and orig_order is not None
-        packed_w = reshape_row_stack_to(normalized_spectra, target_shape_w)
-        out_w = da_w.copy(data=packed_w)
-        if tuple(out_w.dims) != orig_order:
-            out = out_w.transpose(*orig_order)
-        else:
-            out = out_w
-        return with_new_values(
-            input_spectra,
-            out.values,
-            "normalization",
-            treatment_payload,
-        )
+    is_dask = da_w.chunks is not None
 
-    return normalized_spectra.reshape(target_shape_w)
+    if is_dask and method in _GLOBAL_METHODS:
+        warnings.warn(
+            f'normalize(method="{method}") requires statistics across all '
+            "spectra and cannot be computed chunk-by-chunk. "
+            "Loading the full Dask array into RAM now. "
+            "For memory-efficient normalisation use a per-spectrum method "
+            f"({', '.join(sorted(_PER_SPECTRUM_METHODS))}).",
+            UserWarning,
+            stacklevel=3,
+        )
+        da_w = da_w.compute()
+        is_dask = False
+
+    if is_dask:
+        # Per-spectrum method: process each chunk independently.
+        kernel = _make_apply_ufunc_kernel(method, x_values, kwargs)
+        out_w = xr.apply_ufunc(
+            kernel,
+            da_w,
+            input_core_dims=[[sdim]],
+            output_core_dims=[[sdim]],
+            dask="parallelized",
+            output_dtypes=[da_w.dtype],
+        )
+    else:
+        # Eager path: run the existing NumPy kernel.
+        spectra_2d = da_w.values.reshape(-1, da_w.shape[-1])
+        out_2d = _normalize_numpy_block(spectra_2d, method, x_values, kwargs)
+        packed = reshape_row_stack_to(out_2d, da_w.shape)
+        out_w = da_w.copy(data=packed)
+
+    if tuple(out_w.dims) != orig_order:
+        out_w = out_w.transpose(*orig_order)
+
+    return with_new_values(da, out_w.data, "normalization", treatment_payload)

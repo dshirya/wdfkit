@@ -21,7 +21,7 @@ class ParseContext:
     map_params: dict = field(default_factory=dict)
     coord_dict: dict = field(default_factory=dict)
     blocks: dict = field(default_factory=dict)
-    spectra: Any = None  # np.ndarray set in DATA block
+    spectra: Any = None  # np.ndarray or dask.array set in DATA block
     npoints: int = 0
     nspectra: int = 0
     ncollected: int = 0
@@ -30,6 +30,7 @@ class ParseContext:
     origin_labels: list = field(default_factory=list)
     origin_set_dtypes: list = field(default_factory=list)
     origin_set_units: list = field(default_factory=list)
+    chunks: bool | int = False  # False = eager; True or int MB = lazy/dask
 
     def print_block_header(self, name: str, index: int) -> None:
         if self.verbose:
