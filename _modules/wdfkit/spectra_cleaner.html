@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>wdfkit.spectra_cleaner &mdash; wdfkit 0.0.1 documentation</title>
+  <title>wdfkit.spectra_cleaner &mdash; wdfkit 0.1.0rc1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -13,7 +13,7 @@
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=f539c95a"></script>
+      <script src="../../_static/documentation_options.js?v=3b45b1b0"></script>
       <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -33,6 +33,7 @@
           
           <a href="../../index.html" class="icon icon-home">
             wdfkit
+              <img src="../../_static/logo-no-background.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
@@ -98,6 +99,7 @@
     <span class="n">with_new_values</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.preprocessing.pca_clean</span><span class="w"> </span><span class="kn">import</span> <span class="n">NComponents</span><span class="p">,</span> <span class="n">denoise_spectra_pca</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.wdf.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">ensure_in_memory</span>
 
 <span class="n">CleanMethod</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;pca&quot;</span><span class="p">]</span>
 
@@ -221,6 +223,17 @@
 
         <span class="n">sdim</span> <span class="o">=</span> <span class="n">resolve_spectral_dim</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spectral_dim</span><span class="p">)</span>
         <span class="n">da_w</span><span class="p">,</span> <span class="n">orig_order</span> <span class="o">=</span> <span class="n">transpose_spectral_last</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">sdim</span><span class="p">)</span>
+
+        <span class="n">da_w</span> <span class="o">=</span> <span class="n">ensure_in_memory</span><span class="p">(</span>
+            <span class="n">da_w</span><span class="p">,</span>
+            <span class="n">caller</span><span class="o">=</span><span class="s2">&quot;SpectraCleaner (PCA)&quot;</span><span class="p">,</span>
+            <span class="n">reason</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;PCA requires the full covariance matrix of all spectra &quot;</span>
+                <span class="s2">&quot;and cannot be computed chunk-by-chunk.&quot;</span>
+            <span class="p">),</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="p">)</span>
+
         <span class="n">spatial_shape</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
         <span class="n">n_spectra</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">spatial_shape</span><span class="p">))</span> <span class="k">if</span> <span class="n">spatial_shape</span> <span class="k">else</span> <span class="mi">1</span>
         <span class="k">if</span> <span class="n">n_spectra</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>

@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>wdfkit.reader &mdash; wdfkit 0.0.1 documentation</title>
+  <title>wdfkit.reader &mdash; wdfkit 0.1.0rc1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -13,7 +13,7 @@
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=f539c95a"></script>
+      <script src="../../_static/documentation_options.js?v=3b45b1b0"></script>
       <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -33,6 +33,7 @@
           
           <a href="../../index.html" class="icon icon-home">
             wdfkit
+              <img src="../../_static/logo-no-background.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
@@ -75,14 +76,18 @@
              
   <h1>Source code for wdfkit.reader</h1><div class="highlight"><pre>
 <span></span><span class="c1"># -*- coding: utf-8 -*-</span>
-<span class="sd">&quot;&quot;&quot;Public :class:`WDFReader` API.&quot;&quot;&quot;</span>
+<span class="sd">&quot;&quot;&quot;Public :class:`WDFReader` API plus module-level :func:`read` and</span>
+<span class="sd">:func:`classify`.&quot;&quot;&quot;</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">.wdf.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_wdf_file</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.wdf.dispatch</span><span class="w"> </span><span class="kn">import</span> <span class="n">classify_kind</span><span class="p">,</span> <span class="n">dispatch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.wdf.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_wdf_header</span><span class="p">,</span> <span class="n">parse_wdf_to_parsed</span>
 
 <span class="n">StrPath</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">PathLike</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span>
 
@@ -104,9 +109,12 @@
 <span class="sd">    ----------</span>
 <span class="sd">    spectral_dim</span>
 <span class="sd">        Name for the spectral axis coordinate (default ``None`` /</span>
-<span class="sd">        ``\&quot;auto\&quot;``). WiRE ``XLST`` ``XlistDataUnits`` selects the default</span>
-<span class="sd">        (e.g. ``Nanometre`` → dimension ``\&quot;nm\&quot;``). Set to ``\&quot;shifts\&quot;`` for</span>
-<span class="sd">        legacy notebooks.</span>
+<span class="sd">        ``&quot;auto&quot;``).  WiRE ``XLST`` ``XlistDataUnits`` selects the</span>
+<span class="sd">        default (e.g. ``RamanShift`` → dimension ``&quot;raman_shift&quot;``).</span>
+<span class="sd">        Set to ``&quot;shifts&quot;`` for legacy notebooks.</span>
+<span class="sd">    chunks</span>
+<span class="sd">        Enable lazy Dask-backed reading.  ``False`` (default) = eager;</span>
+<span class="sd">        ``True`` = auto-chunk at ~128 MB per chunk; ``int`` = target MB.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
@@ -116,6 +124,7 @@
         <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
         <span class="n">time_coord</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;seconds_elapsed&quot;</span><span class="p">,</span>
         <span class="n">spectral_dim</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">chunks</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fspath</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span> <span class="o">=</span> <span class="n">verbose</span>
@@ -123,16 +132,96 @@
             <span class="kc">None</span> <span class="k">if</span> <span class="n">time_coord</span> <span class="o">!=</span> <span class="s2">&quot;seconds_elapsed&quot;</span> <span class="k">else</span> <span class="n">time_coord</span>
         <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_spectral_dim</span> <span class="o">=</span> <span class="n">spectral_dim</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">read_wdf_file</span><span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_chunks</span> <span class="o">=</span> <span class="n">chunks</span>
+
+        <span class="n">parsed</span> <span class="o">=</span> <span class="n">parse_wdf_to_parsed</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_time_coord</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_spectral_dim</span><span class="p">,</span>
+            <span class="n">verbose</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">,</span>
+            <span class="n">time_coord</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_time_coord</span><span class="p">,</span>
+            <span class="n">spectral_dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_spectral_dim</span><span class="p">,</span>
+            <span class="n">chunks</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_chunks</span><span class="p">,</span>
         <span class="p">)</span>
+        <span class="c1"># Override spectral dim name when explicitly requested</span>
+        <span class="k">if</span> <span class="n">spectral_dim</span> <span class="ow">and</span> <span class="n">spectral_dim</span> <span class="o">!=</span> <span class="s2">&quot;auto&quot;</span><span class="p">:</span>
+            <span class="n">parsed</span><span class="o">.</span><span class="n">xlst</span><span class="o">.</span><span class="n">dim_name</span> <span class="o">=</span> <span class="n">spectral_dim</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span> <span class="o">=</span> <span class="n">dispatch</span><span class="p">(</span><span class="n">parsed</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">parsed</span><span class="o">.</span><span class="n">img</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span>
         <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">image</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Module-level convenience API</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="read">
+<a class="viewcode-back" href="../../api/wdfkit.html#wdfkit.read">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span>
+    <span class="n">path</span><span class="p">:</span> <span class="n">StrPath</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">spectral_dim</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">chunks</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read a WiRE ``.wdf`` file and return a :class:`xarray.DataArray`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    path</span>
+<span class="sd">        Path to the ``.wdf`` file.</span>
+<span class="sd">    spectral_dim</span>
+<span class="sd">        Override for the spectral-axis dimension name.</span>
+<span class="sd">    chunks</span>
+<span class="sd">        Dask chunking: ``False`` (eager), ``True`` (auto), or int (target MB).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    xarray.DataArray</span>
+<span class="sd">        Shape and dims depend on scan kind; spectral axis is always last.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">parsed</span> <span class="o">=</span> <span class="n">parse_wdf_to_parsed</span><span class="p">(</span>
+        <span class="n">path</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span>
+        <span class="n">spectral_dim</span><span class="o">=</span><span class="n">spectral_dim</span><span class="p">,</span>
+        <span class="n">chunks</span><span class="o">=</span><span class="n">chunks</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">spectral_dim</span> <span class="ow">and</span> <span class="n">spectral_dim</span> <span class="o">!=</span> <span class="s2">&quot;auto&quot;</span><span class="p">:</span>
+        <span class="n">parsed</span><span class="o">.</span><span class="n">xlst</span><span class="o">.</span><span class="n">dim_name</span> <span class="o">=</span> <span class="n">spectral_dim</span>
+    <span class="k">return</span> <span class="n">dispatch</span><span class="p">(</span><span class="n">parsed</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="classify">
+<a class="viewcode-back" href="../../api/wdfkit.html#wdfkit.classify">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">classify</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">StrPath</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return scan classification for a WiRE ``.wdf`` file *without*</span>
+<span class="sd">    loading the spectral data.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict</span>
+<span class="sd">        Keys: ``kind``, ``measurement_type``, ``scan_type``,</span>
+<span class="sd">        ``wmap_flag``, ``nspectra``, ``npoints``, ``nsteps``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">parsed</span> <span class="o">=</span> <span class="n">parse_wdf_header</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">kind</span> <span class="o">=</span> <span class="n">classify_kind</span><span class="p">(</span><span class="n">parsed</span><span class="p">)</span>
+    <span class="n">info</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;kind&quot;</span><span class="p">:</span> <span class="n">kind</span><span class="p">,</span>
+        <span class="s2">&quot;measurement_type&quot;</span><span class="p">:</span> <span class="n">parsed</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;MeasurementType&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;scan_type&quot;</span><span class="p">:</span> <span class="n">parsed</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ScanType&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;wmap_flag&quot;</span><span class="p">:</span> <span class="n">parsed</span><span class="o">.</span><span class="n">wmap</span><span class="o">.</span><span class="n">flag</span> <span class="k">if</span> <span class="n">parsed</span><span class="o">.</span><span class="n">wmap</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;nspectra&quot;</span><span class="p">:</span> <span class="n">parsed</span><span class="o">.</span><span class="n">nspectra</span><span class="p">,</span>
+        <span class="s2">&quot;npoints&quot;</span><span class="p">:</span> <span class="n">parsed</span><span class="o">.</span><span class="n">npoints</span><span class="p">,</span>
+        <span class="s2">&quot;nsteps&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">parsed</span><span class="o">.</span><span class="n">wmap</span><span class="o">.</span><span class="n">nsteps</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span> <span class="k">if</span> <span class="n">parsed</span><span class="o">.</span><span class="n">wmap</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">),</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">info</span></div>
 
 </pre></div>
 

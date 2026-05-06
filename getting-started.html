@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Getting started &mdash; wdfkit 0.0.1 documentation</title>
+  <title>Getting started &mdash; wdfkit 0.1.0rc1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f539c95a"></script>
+      <script src="_static/documentation_options.js?v=3b45b1b0"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -36,6 +36,7 @@
           
           <a href="index.html" class="icon icon-home">
             wdfkit
+              <img src="_static/logo-no-background.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -86,11 +87,17 @@
              
   <section id="getting-started">
 <span id="index-0"></span><span id="id1"></span><h1>Getting started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h1>
-<a class="reference internal image-reference" href="_images/logo.png"><img alt="wdfkit logo" class="align-center" src="_images/logo.png" style="width: 200px;" />
+<a class="reference internal image-reference" href="_images/logo.png"><img alt="wdfkit logo" class="align-center" src="_images/logo.png" style="width: 400px;" />
 </a>
 <p><code class="docutils literal notranslate"><span class="pre">wdfkit</span></code> reads Renishaw WiRE <code class="docutils literal notranslate"><span class="pre">.wdf</span></code> spectra into <code class="docutils literal notranslate"><span class="pre">xarray.DataArray</span></code>
 objects and provides preprocessing tools: cosmic-ray removal, Nd:YAG
 laser-harmonic notches, normalization, and PCA-based denoising.</p>
+<p><a class="reference internal" href="api/wdfkit.html#wdfkit.WDFReader" title="wdfkit.WDFReader"><code class="xref py py-class docutils literal notranslate"><span class="pre">WDFReader</span></code></a> loads data eagerly by default; pass <code class="docutils literal notranslate"><span class="pre">chunks=True</span></code>
+(or an integer target chunk size in megabytes) for <strong>lazy, Dask-backed</strong>
+arrays when working with large maps.</p>
+<p>The project is <strong>inspired by</strong> <a class="reference external" href="https://gitlab.in2p3.fr/dejan.skrelic/spectrapy">spectrapy</a>
+by <strong>Dejan Skrelic</strong>—an earlier tool that shaped how spectroscopy users treat
+this kind of data.</p>
 <section id="installation">
 <h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
 <p>The quickest way to install is via pip:</p>
@@ -114,29 +121,53 @@ laser-harmonic notches, normalization, and PCA-based denoising.</p>
 <span class="n">image</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">image</span>  <span class="c1"># white-light image, or None</span>
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> dimensions depend on the measurement type:</p>
+<p>Optional keyword arguments include <code class="docutils literal notranslate"><span class="pre">spectral_dim</span></code> (override the automatic
+spectral-axis name), <code class="docutils literal notranslate"><span class="pre">chunks</span></code> (lazy/Dask chunking), <code class="docutils literal notranslate"><span class="pre">verbose</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">time_coord</span></code> — see the class docstring for details.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> rank and dimension names depend on how WiRE acquired the
+data:</p>
 <ul class="simple">
-<li><p><strong>Map</strong> scan → shape <code class="docutils literal notranslate"><span class="pre">(ny,</span> <span class="pre">nx,</span> <span class="pre">n_spectral)</span></code></p></li>
-<li><p><strong>Single spectrum</strong> or line → shape <code class="docutils literal notranslate"><span class="pre">(1,</span> <span class="pre">n_spectral)</span></code></p></li>
+<li><p><strong>Single spectrum</strong> → <strong>1D</strong> <code class="docutils literal notranslate"><span class="pre">(spectral_dim,)</span></code> (only the spectral axis).</p></li>
+<li><p><strong>Series</strong> (e.g. depth or stage stacks) → <strong>2D</strong> <code class="docutils literal notranslate"><span class="pre">(series_axis,</span> <span class="pre">spectral_dim)</span></code>.
+The first dimension is named from ORGN metadata when possible (for example
+<code class="docutils literal notranslate"><span class="pre">&quot;SpatialZ&quot;</span></code>).</p></li>
+<li><p><strong>Line scans, XY lines, random-point maps</strong> → <strong>2D</strong> <code class="docutils literal notranslate"><span class="pre">(&quot;point&quot;,</span>
+<span class="pre">spectral_dim)</span></code> with spatial coordinates on <code class="docutils literal notranslate"><span class="pre">point</span></code> when present.</p></li>
+<li><p><strong>Raster maps</strong> → <strong>3D</strong> <code class="docutils literal notranslate"><span class="pre">(&quot;y&quot;,</span> <span class="pre">&quot;x&quot;,</span> <span class="pre">spectral_dim)</span></code>.</p></li>
 </ul>
 <p>The spectral coordinate name is inferred automatically from the file’s
-<code class="docutils literal notranslate"><span class="pre">XlistDataUnits</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;nm&quot;</span></code> for wavelength data, <code class="docutils literal notranslate"><span class="pre">&quot;raman_shift&quot;</span></code> for
-Raman shift). Override with the <code class="docutils literal notranslate"><span class="pre">spectral_dim</span></code> argument:</p>
+<code class="docutils literal notranslate"><span class="pre">XlistDataUnits</span></code> (e.g. wavelength-related units → <code class="docutils literal notranslate"><span class="pre">&quot;nm&quot;</span></code>, Raman shift →
+<code class="docutils literal notranslate"><span class="pre">&quot;raman_shift&quot;</span></code>). Override with <code class="docutils literal notranslate"><span class="pre">spectral_dim</span></code>, including legacy notebooks
+that expect <code class="docutils literal notranslate"><span class="pre">&quot;shifts&quot;</span></code>:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">data</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">WDFReader</span><span class="p">(</span><span class="s2">&quot;measurement.wdf&quot;</span><span class="p">,</span> <span class="n">spectral_dim</span><span class="o">=</span><span class="s2">&quot;shifts&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
+<p><a class="reference internal" href="api/wdfkit.html#wdfkit.read" title="wdfkit.read"><code class="xref py py-func docutils literal notranslate"><span class="pre">read()</span></code></a> loads the same cube or spectrum but returns <strong>only</strong> the
+<code class="docutils literal notranslate"><span class="pre">DataArray</span></code> (no white-light image). <a class="reference internal" href="api/wdfkit.html#wdfkit.classify" title="wdfkit.classify"><code class="xref py py-func docutils literal notranslate"><span class="pre">classify()</span></code></a> returns a small
+summary dict (scan <code class="docutils literal notranslate"><span class="pre">kind</span></code>, counts, flags) <strong>without</strong> reading the spectral
+payload — useful for scripting over folders of <code class="docutils literal notranslate"><span class="pre">.wdf</span></code> files.</p>
 </section>
 <section id="cosmic-ray-removal">
 <h2>Cosmic-ray removal<a class="headerlink" href="#cosmic-ray-removal" title="Link to this heading"></a></h2>
-<p>Use <a class="reference internal" href="api/wdfkit.html#wdfkit.CosmicRayRemover" title="wdfkit.CosmicRayRemover"><code class="xref py py-class docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code></a> for both single spectra and maps.
-The default pipeline runs <strong>laser-harmonic notch first</strong>, then <strong>spike
-removal</strong>:</p>
+<p>Use <a class="reference internal" href="api/wdfkit.html#wdfkit.CosmicRayRemover" title="wdfkit.CosmicRayRemover"><code class="xref py py-class docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code></a> for maps, line scans (2D stacks along
+<code class="docutils literal notranslate"><span class="pre">point</span></code> or similar), and single spectra expressed as <strong>2D</strong>
+<code class="docutils literal notranslate"><span class="pre">(n_row,</span> <span class="pre">spectral_dim)</span></code> with <code class="docutils literal notranslate"><span class="pre">n_row</span> <span class="pre">==</span> <span class="pre">1</span></code>. The default pipeline runs
+<strong>laser-harmonic notch first</strong>, then <strong>spike removal</strong>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">wdfkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">WDFReader</span><span class="p">,</span> <span class="n">CosmicRayRemover</span>
 
 <span class="n">data</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">WDFReader</span><span class="p">(</span><span class="s2">&quot;map.wdf&quot;</span><span class="p">)</span>
 
 <span class="n">remover</span> <span class="o">=</span> <span class="n">CosmicRayRemover</span><span class="p">()</span>       <span class="c1"># all defaults</span>
 <span class="n">data_clean</span> <span class="o">=</span> <span class="n">remover</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>  <span class="c1"># harmonics + cosmic rays</span>
+</pre></div>
+</div>
+<p>If <a class="reference internal" href="api/wdfkit.html#wdfkit.WDFReader" title="wdfkit.WDFReader"><code class="xref py py-class docutils literal notranslate"><span class="pre">WDFReader</span></code></a> returned a <strong>1D</strong> single spectrum, add a
+singleton axis so the spectral dimension stays <strong>last</strong> (shape
+<code class="docutils literal notranslate"><span class="pre">(1,</span> <span class="pre">n_spectral)</span></code>) before calling the remover:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">data</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">WDFReader</span><span class="p">(</span><span class="s2">&quot;single.wdf&quot;</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="s2">&quot;spectrum&quot;</span><span class="p">)</span>
+<span class="n">data_clean</span> <span class="o">=</span> <span class="n">CosmicRayRemover</span><span class="p">()</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>For fine-grained control, call the steps separately:</p>
@@ -150,10 +181,12 @@ removal</strong>:</p>
 <span class="n">data_clean</span> <span class="o">=</span> <span class="n">remover</span><span class="o">.</span><span class="n">remove_cosmic_rays</span><span class="p">(</span><span class="n">data_no_harmonics</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>To inspect what was detected (maps only), use the diagnostics method:</p>
+<p>To inspect detections and masks, use the diagnostics method (keys depend on
+dimensionality — <strong>3D maps</strong> expose <code class="docutils literal notranslate"><span class="pre">core_mask</span></code> / <code class="docutils literal notranslate"><span class="pre">repair_mask</span></code>; <strong>2D</strong>
+single-row spectra expose <code class="docutils literal notranslate"><span class="pre">cosmic_mask</span></code>, etc.):</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">data_clean</span><span class="p">,</span> <span class="n">diagnostics</span> <span class="o">=</span> <span class="n">remover</span><span class="o">.</span><span class="n">remove_with_diagnostics</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-<span class="c1"># diagnostics[&quot;core_mask&quot;] — boolean array of detected spikes</span>
-<span class="c1"># diagnostics[&quot;repair_mask&quot;] — dilated mask that was interpolated</span>
+<span class="c1"># e.g. diagnostics[&quot;core_mask&quot;] — boolean array of detected spikes (maps)</span>
+<span class="c1"># diagnostics[&quot;repair_mask&quot;] — dilated mask that was interpolated (maps)</span>
 </pre></div>
 </div>
 <p>Key parameters for <strong>single-spectrum</strong> removal:</p>
@@ -177,6 +210,9 @@ removal</strong>:</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">threshold</span></code></p></td>
 <td><p>Multiplier on robust noise (higher → fewer detections)</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_passes</span></code></p></td>
+<td><p>Single-spectrum path: number of detect–repair iterations (default <code class="docutils literal notranslate"><span class="pre">3</span></code>)</p></td>
+</tr>
 </tbody>
 </table>
 <p>Key parameters for <strong>map</strong> removal:</p>
@@ -194,14 +230,23 @@ removal</strong>:</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sensitivity</span></code></p></td>
 <td><p>Scales detection aggressiveness (higher → more hits)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">disk_radius</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">width</span></code></p></td>
+<td><p>Spectral mask dilation as a fraction of the spectral length (map path)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">disk_radius</span></code></p></td>
 <td><p>Spatial disk radius for the median reference filter</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">map_mad_multiplier</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">map_mad_multiplier</span></code></p></td>
 <td><p>Multiplier on per-channel MAD noise (larger → fewer false positives)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">map_require_spatial_local_max</span></code></p></td>
+<td><p>If True (default), keep only spatial local maxima at fixed wavelength,
+reducing bright extended features misclassified as cosmic rays</p></td>
 </tr>
 </tbody>
 </table>
+<p>See <a class="reference internal" href="api/wdfkit.html#wdfkit.CosmicRayRemover" title="wdfkit.CosmicRayRemover"><code class="xref py py-class docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code></a> for additional map tuning parameters
+(<code class="docutils literal notranslate"><span class="pre">map_noisy_channel_relax_min</span></code>, <code class="docutils literal notranslate"><span class="pre">map_spectral_dilate_cap</span></code>, …).</p>
 </section>
 <section id="normalization">
 <h2>Normalization<a class="headerlink" href="#normalization" title="Link to this heading"></a></h2>
@@ -212,13 +257,19 @@ removal</strong>:</p>
 </pre></div>
 </div>
 <p>Available methods: <code class="docutils literal notranslate"><span class="pre">&quot;l1&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;l2&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;min_max&quot;</span></code>,
-<code class="docutils literal notranslate"><span class="pre">&quot;robust_scale&quot;</span></code> (default), <code class="docutils literal notranslate"><span class="pre">&quot;area&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;wave_number&quot;</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">&quot;robust_scale&quot;</span></code> (default), <code class="docutils literal notranslate"><span class="pre">&quot;area&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;wave_number&quot;</span></code>. Pass
+<code class="docutils literal notranslate"><span class="pre">spectral_dim</span></code> if the spectral axis is not the <strong>last</strong> dimension. Per-
+spectrum methods can run <strong>chunk-wise</strong> on Dask-backed arrays; <code class="docutils literal notranslate"><span class="pre">&quot;robust_scale&quot;</span></code>
+and <code class="docutils literal notranslate"><span class="pre">&quot;wave_number&quot;</span></code> need the full dataset in memory first (see the function
+docstring).</p>
 </section>
 <section id="pca-denoising">
 <h2>PCA denoising<a class="headerlink" href="#pca-denoising" title="Link to this heading"></a></h2>
 <p><a class="reference internal" href="api/wdfkit.html#wdfkit.SpectraCleaner" title="wdfkit.SpectraCleaner"><code class="xref py py-class docutils literal notranslate"><span class="pre">SpectraCleaner</span></code></a> removes noise from a <strong>population</strong> of spectra
-(maps or stacks) using PCA reconstruction. It requires more than one spectrum —
-for a single spectrum use a 1D smoother instead.</p>
+using PCA reconstruction. Typical inputs are <strong>3D</strong> map cubes
+<code class="docutils literal notranslate"><span class="pre">(y,</span> <span class="pre">x,</span> <span class="pre">spectral_dim)</span></code> or <strong>2D</strong> stacks <code class="docutils literal notranslate"><span class="pre">(n_spectra,</span> <span class="pre">spectral_dim)</span></code>. It
+requires <strong>more than one spectrum</strong> — for a single spectrum use a 1D smoother
+instead.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">wdfkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">WDFReader</span><span class="p">,</span> <span class="n">SpectraCleaner</span>
 
 <span class="n">data</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">WDFReader</span><span class="p">(</span><span class="s2">&quot;map.wdf&quot;</span><span class="p">)</span>
@@ -228,17 +279,19 @@ for a single spectrum use a 1D smoother instead.</p>
 </pre></div>
 </div>
 <p>To also retrieve the PCA decomposition (components, per-spectrum scores,
-explained variance):</p>
+explained variance arrays):</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">cleaner</span> <span class="o">=</span> <span class="n">SpectraCleaner</span><span class="p">(</span><span class="n">n_components</span><span class="o">=</span><span class="mf">0.95</span><span class="p">)</span>   <span class="c1"># keep 95 % of variance</span>
 <span class="n">data_clean</span><span class="p">,</span> <span class="n">decomp</span> <span class="o">=</span> <span class="n">cleaner</span><span class="o">.</span><span class="n">clean_with_decomposition</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 
 <span class="n">components</span> <span class="o">=</span> <span class="n">decomp</span><span class="p">[</span><span class="s2">&quot;components&quot;</span><span class="p">]</span>              <span class="c1"># shape (n_components, n_spectral)</span>
-<span class="n">coeffs</span> <span class="o">=</span> <span class="n">decomp</span><span class="p">[</span><span class="s2">&quot;coeffs&quot;</span><span class="p">]</span>                      <span class="c1"># shape (ny, nx, n_components)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">decomp</span><span class="p">[</span><span class="s2">&quot;explained_variance_ratio_total&quot;</span><span class="p">])</span>
+<span class="n">coeffs</span> <span class="o">=</span> <span class="n">decomp</span><span class="p">[</span><span class="s2">&quot;coeffs&quot;</span><span class="p">]</span>                      <span class="c1"># same spatial layout as input + components axis</span>
+<span class="n">ratio</span> <span class="o">=</span> <span class="n">decomp</span><span class="p">[</span><span class="s2">&quot;explained_variance_ratio&quot;</span><span class="p">]</span>     <span class="c1"># length n_components</span>
 </pre></div>
 </div>
-<p>The cleaned <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> carries a <code class="docutils literal notranslate"><span class="pre">treatments[&quot;spectra_cleaning&quot;]</span></code> entry
-with the number of components used and variance-explained summary.</p>
+<p>Overall variance explained by the retained components is summarized on the
+cleaned array under <code class="docutils literal notranslate"><span class="pre">attrs[&quot;treatments&quot;][&quot;spectra_cleaning&quot;]</span></code>
+(<code class="docutils literal notranslate"><span class="pre">explained_variance_ratio_total</span></code>, <code class="docutils literal notranslate"><span class="pre">n_components_used</span></code>, and related
+fields). Large arrays live only in <code class="docutils literal notranslate"><span class="pre">decomp</span></code> (<code class="docutils literal notranslate"><span class="pre">components</span></code>, <code class="docutils literal notranslate"><span class="pre">coeffs</span></code>, …).</p>
 </section>
 <section id="typical-workflow">
 <h2>Typical workflow<a class="headerlink" href="#typical-workflow" title="Link to this heading"></a></h2>
@@ -254,7 +307,7 @@ with the number of components used and variance-explained summary.</p>
 <span class="c1"># 3. Normalize</span>
 <span class="n">data</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;area&quot;</span><span class="p">)</span>
 
-<span class="c1"># 4. PCA denoise (maps only)</span>
+<span class="c1"># 4. PCA denoise (any multi-spectrum cube or stack)</span>
 <span class="n">data</span> <span class="o">=</span> <span class="n">SpectraCleaner</span><span class="p">(</span><span class="n">n_components</span><span class="o">=</span><span class="s2">&quot;mle&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 </pre></div>
 </div>

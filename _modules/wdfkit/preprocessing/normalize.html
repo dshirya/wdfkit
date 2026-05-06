@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>wdfkit.preprocessing.normalize &mdash; wdfkit 0.0.1 documentation</title>
+  <title>wdfkit.preprocessing.normalize &mdash; wdfkit 0.1.0rc1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
@@ -13,7 +13,7 @@
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../../_static/documentation_options.js?v=f539c95a"></script>
+      <script src="../../../_static/documentation_options.js?v=3b45b1b0"></script>
       <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -33,6 +33,7 @@
           
           <a href="../../../index.html" class="icon icon-home">
             wdfkit
+              <img src="../../../_static/logo-no-background.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
@@ -79,18 +80,27 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">warnings</span><span class="w"> </span><span class="kn">import</span> <span class="n">warn</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">sklearn</span><span class="w"> </span><span class="kn">import</span> <span class="n">preprocessing</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">..wdf.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">ensure_in_memory</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">._common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">reshape_row_stack_to</span><span class="p">,</span>
     <span class="n">resolve_spectral_dim</span><span class="p">,</span>
     <span class="n">transpose_spectral_last</span><span class="p">,</span>
     <span class="n">with_new_values</span><span class="p">,</span>
 <span class="p">)</span>
+
+<span class="c1"># Methods that normalize each spectrum using only its own values.</span>
+<span class="c1"># These are fully parallelisable and work chunk-by-chunk via apply_ufunc.</span>
+<span class="n">_PER_SPECTRUM_METHODS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;l1&quot;</span><span class="p">,</span> <span class="s2">&quot;l2&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span> <span class="s2">&quot;min_max&quot;</span><span class="p">,</span> <span class="s2">&quot;area&quot;</span><span class="p">}</span>
+
+<span class="c1"># Methods that require statistics across ALL spectra simultaneously.</span>
+<span class="c1"># A Dask-backed DataArray will be computed fully before these run.</span>
+<span class="n">_GLOBAL_METHODS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;wave_number&quot;</span><span class="p">,</span> <span class="s2">&quot;robust_scale&quot;</span><span class="p">}</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_trapz_y</span><span class="p">(</span>
@@ -109,6 +119,81 @@
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_numpy_block</span><span class="p">(</span>
+    <span class="n">spectra_2d</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">x_values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Normalize a 2D ``(n_spectra, n_points)`` NumPy array.</span>
+
+<span class="sd">    This is the pure-NumPy inner kernel, called directly for ndarray input</span>
+<span class="sd">    and as the ``apply_ufunc`` kernel for per-spectrum methods on DataArrays.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;l1&quot;</span><span class="p">,</span> <span class="s2">&quot;l2&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">):</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">preprocessing</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span>
+            <span class="n">spectra_2d</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;min_max&quot;</span><span class="p">:</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">preprocessing</span><span class="o">.</span><span class="n">minmax_scale</span><span class="p">(</span><span class="n">spectra_2d</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;area&quot;</span><span class="p">:</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="n">_trapz_y</span><span class="p">(</span><span class="n">spectra_2d</span><span class="p">,</span> <span class="n">x_values</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">denom</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">denom</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">spectra_2d</span> <span class="o">/</span> <span class="n">denom</span>
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;wave_number&quot;</span><span class="p">:</span>
+        <span class="n">wave_number</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;wave_number&quot;</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">x_values</span><span class="p">)))</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanargmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x_values</span> <span class="o">-</span> <span class="n">wave_number</span><span class="p">)))</span>
+        <span class="n">divider</span> <span class="o">=</span> <span class="n">spectra_2d</span><span class="p">[:,</span> <span class="p">[</span><span class="n">idx</span><span class="p">]]</span>
+        <span class="n">mean_divider</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">divider</span><span class="p">))</span>
+        <span class="n">divider</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">divider</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">mean_divider</span><span class="p">,</span> <span class="n">divider</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">spectra_2d</span> <span class="o">/</span> <span class="n">divider</span>
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;robust_scale&quot;</span><span class="p">:</span>
+        <span class="n">quantile</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;quantile&quot;</span><span class="p">,</span> <span class="p">(</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">95.0</span><span class="p">))</span>
+        <span class="n">centering</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;centering&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">preprocessing</span><span class="o">.</span><span class="n">robust_scale</span><span class="p">(</span>
+            <span class="n">spectra_2d</span><span class="p">,</span>
+            <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">with_centering</span><span class="o">=</span><span class="n">centering</span><span class="p">,</span>
+            <span class="n">quantile_range</span><span class="o">=</span><span class="n">quantile</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;normalize method </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s2"> is not recognised. &quot;</span>
+            <span class="s1">&#39;&quot;method&quot; must be one of &#39;</span>
+            <span class="s1">&#39;[&quot;l1&quot;, &quot;l2&quot;, &quot;max&quot;, &quot;min_max&quot;, &quot;wave_number&quot;, &#39;</span>
+            <span class="s1">&#39;&quot;robust_scale&quot;, &quot;area&quot;].&#39;</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_make_apply_ufunc_kernel</span><span class="p">(</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">x_values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a function ``(spectra_nd,) → normalized_nd`` for use with</span>
+<span class="sd">    ``xr.apply_ufunc``.</span>
+
+<span class="sd">    ``apply_ufunc`` with ``input_core_dims=[[sdim]]`` passes the spectral</span>
+<span class="sd">    axis as the *last* axis of a plain NumPy array, with all spatial dims</span>
+<span class="sd">    flattened along leading axes.  We reshape to 2D, run the kernel, and</span>
+<span class="sd">    reshape back.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_kernel</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+        <span class="n">orig_shape</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">arr_2d</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">orig_shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">out_2d</span> <span class="o">=</span> <span class="n">_normalize_numpy_block</span><span class="p">(</span><span class="n">arr_2d</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">x_values</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out_2d</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">orig_shape</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">_kernel</span>
+
+
+<span class="n">_ALL_METHODS</span> <span class="o">=</span> <span class="n">_PER_SPECTRUM_METHODS</span> <span class="o">|</span> <span class="n">_GLOBAL_METHODS</span>
+
+
 <div class="viewcode-block" id="normalize">
 <a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.normalize">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">normalize</span><span class="p">(</span>
@@ -123,6 +208,15 @@
 <span class="sd">    For :class:`xarray.DataArray` input, the spectral axis defaults to the</span>
 <span class="sd">    **last** dimension (e.g. ``nm``, ``raman_shift``, ``shifts``, …). Pass</span>
 <span class="sd">    ``spectral_dim`` to select another dimension when spectra are not last.</span>
+
+<span class="sd">    **Dask-backed DataArrays** are handled transparently:</span>
+
+<span class="sd">    - *Per-spectrum methods* (``&quot;l1&quot;``, ``&quot;l2&quot;``, ``&quot;max&quot;``, ``&quot;min_max&quot;``,</span>
+<span class="sd">      ``&quot;area&quot;``): processed chunk-by-chunk via ``xr.apply_ufunc`` —</span>
+<span class="sd">      no data is loaded into RAM beyond the current chunk.</span>
+<span class="sd">    - *Global methods* (``&quot;robust_scale&quot;``, ``&quot;wave_number&quot;``): require</span>
+<span class="sd">      statistics across all spectra; the full array is computed first.  A</span>
+<span class="sd">      ``UserWarning`` is emitted so you know RAM is being used.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -141,28 +235,44 @@
 <span class="sd">    Same type as ``input_spectra`` with updated ``attrs[\&quot;treatments\&quot;]`` for</span>
 <span class="sd">    DataArray output.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_ALL_METHODS</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;normalize method </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s2"> is not recognised. &quot;</span>
+            <span class="sa">f</span><span class="s1">&#39;&quot;method&quot; must be one of </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">_ALL_METHODS</span><span class="p">)</span><span class="si">!r}</span><span class="s1">.&#39;</span>
+        <span class="p">)</span>
+
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_spectra</span><span class="p">,</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">):</span>
-        <span class="n">sdim</span> <span class="o">=</span> <span class="n">resolve_spectral_dim</span><span class="p">(</span><span class="n">input_spectra</span><span class="p">,</span> <span class="n">spectral_dim</span><span class="p">)</span>
-        <span class="n">da_w</span><span class="p">,</span> <span class="n">orig_order</span> <span class="o">=</span> <span class="n">transpose_spectral_last</span><span class="p">(</span><span class="n">input_spectra</span><span class="p">,</span> <span class="n">sdim</span><span class="p">)</span>
-        <span class="n">x_values</span> <span class="o">=</span> <span class="n">da_w</span><span class="p">[</span><span class="n">sdim</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
-        <span class="n">spectra</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">da_w</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
-        <span class="n">target_shape_w</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">shape</span>
-        <span class="n">as_xarray</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="n">_normalize_dataarray</span><span class="p">(</span>
+            <span class="n">input_spectra</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">spectral_dim</span><span class="p">,</span> <span class="n">kwargs</span>
+        <span class="p">)</span>
+
+    <span class="c1"># --- ndarray path (unchanged) -------------------------------------------</span>
+    <span class="n">spectra</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">input_spectra</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">spectra</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;ndarray input must be 2D with shape (n_spectra, n_points)&quot;</span>
+        <span class="p">)</span>
+    <span class="n">x_values</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;x_values&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">x_values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">x_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">spectra</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">spectra</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">input_spectra</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">spectra</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">&quot;ndarray input must be 2D with shape (n_spectra, n_points)&quot;</span>
-            <span class="p">)</span>
-        <span class="n">x_values</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;x_values&quot;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">x_values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">x_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">spectra</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">x_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x_values</span><span class="p">)</span>
-        <span class="n">target_shape_w</span> <span class="o">=</span> <span class="n">spectra</span><span class="o">.</span><span class="n">shape</span>
-        <span class="n">da_w</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">orig_order</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">as_xarray</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">x_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x_values</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_normalize_numpy_block</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">x_values</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+        <span class="n">spectra</span><span class="o">.</span><span class="n">shape</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_dataarray</span><span class="p">(</span>
+    <span class="n">da</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">spectral_dim</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;DataArray normalisation, Dask-aware.&quot;&quot;&quot;</span>
+    <span class="n">sdim</span> <span class="o">=</span> <span class="n">resolve_spectral_dim</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="n">spectral_dim</span><span class="p">)</span>
+    <span class="n">da_w</span><span class="p">,</span> <span class="n">orig_order</span> <span class="o">=</span> <span class="n">transpose_spectral_last</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="n">sdim</span><span class="p">)</span>
+    <span class="n">x_values</span> <span class="o">=</span> <span class="n">da_w</span><span class="p">[</span><span class="n">sdim</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>  <span class="c1"># always a small NumPy array</span>
 
     <span class="n">meta_keys</span> <span class="o">=</span> <span class="p">(</span>
         <span class="s2">&quot;quantile&quot;</span><span class="p">,</span>
@@ -172,66 +282,46 @@
         <span class="s2">&quot;spectral_dim&quot;</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">meta</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">meta_keys</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">}</span>
-
-    <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;l1&quot;</span><span class="p">,</span> <span class="s2">&quot;l2&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">):</span>
-        <span class="n">normalized_spectra</span> <span class="o">=</span> <span class="n">preprocessing</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span>
-            <span class="n">spectra</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span>
-        <span class="p">)</span>
-    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;min_max&quot;</span><span class="p">:</span>
-        <span class="n">normalized_spectra</span> <span class="o">=</span> <span class="n">preprocessing</span><span class="o">.</span><span class="n">minmax_scale</span><span class="p">(</span>
-            <span class="n">spectra</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span>
-        <span class="p">)</span>
-    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;area&quot;</span><span class="p">:</span>
-        <span class="n">denom</span> <span class="o">=</span> <span class="n">_trapz_y</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">x_values</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
-        <span class="n">denom</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">denom</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">denom</span><span class="p">)</span>
-        <span class="n">normalized_spectra</span> <span class="o">=</span> <span class="n">spectra</span> <span class="o">/</span> <span class="n">denom</span>
-    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;wave_number&quot;</span><span class="p">:</span>
-        <span class="n">wave_number</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;wave_number&quot;</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">x_values</span><span class="p">)))</span>
-        <span class="n">idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanargmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x_values</span> <span class="o">-</span> <span class="n">wave_number</span><span class="p">)))</span>
-        <span class="n">divider</span> <span class="o">=</span> <span class="n">spectra</span><span class="p">[:,</span> <span class="p">[</span><span class="n">idx</span><span class="p">]]</span>
-        <span class="n">mean_divider</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">divider</span><span class="p">))</span>
-        <span class="n">divider</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">divider</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">mean_divider</span><span class="p">,</span> <span class="n">divider</span><span class="p">)</span>
-        <span class="n">normalized_spectra</span> <span class="o">=</span> <span class="n">spectra</span> <span class="o">/</span> <span class="n">divider</span>
-    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;robust_scale&quot;</span><span class="p">:</span>
-        <span class="n">quantile</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;quantile&quot;</span><span class="p">,</span> <span class="p">(</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">95.0</span><span class="p">))</span>
-        <span class="n">centering</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;centering&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
-        <span class="n">normalized_spectra</span> <span class="o">=</span> <span class="n">preprocessing</span><span class="o">.</span><span class="n">robust_scale</span><span class="p">(</span>
-            <span class="n">spectra</span><span class="p">,</span>
-            <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-            <span class="n">with_centering</span><span class="o">=</span><span class="n">centering</span><span class="p">,</span>
-            <span class="n">quantile_range</span><span class="o">=</span><span class="n">quantile</span><span class="p">,</span>
-        <span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">warn</span><span class="p">(</span>
-            <span class="s1">&#39;&quot;method&quot; must be one of &#39;</span>
-            <span class="s1">&#39;[&quot;l1&quot;, &quot;l2&quot;, &quot;max&quot;, &quot;min_max&quot;, &quot;wave_number&quot;, &#39;</span>
-            <span class="s1">&#39;&quot;robust_scale&quot;, &quot;area&quot;]&#39;</span>
-        <span class="p">)</span>
-        <span class="n">normalized_spectra</span> <span class="o">=</span> <span class="n">spectra</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-
-    <span class="n">normalized_spectra</span> <span class="o">=</span> <span class="n">normalized_spectra</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span>
-        <span class="n">normalized_spectra</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span>
-    <span class="p">)</span>
-
     <span class="n">treatment_payload</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span> <span class="o">**</span><span class="n">meta</span><span class="p">}</span>
 
-    <span class="k">if</span> <span class="n">as_xarray</span><span class="p">:</span>
-        <span class="k">assert</span> <span class="n">da_w</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">orig_order</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-        <span class="n">packed_w</span> <span class="o">=</span> <span class="n">reshape_row_stack_to</span><span class="p">(</span><span class="n">normalized_spectra</span><span class="p">,</span> <span class="n">target_shape_w</span><span class="p">)</span>
-        <span class="n">out_w</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">packed_w</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">out_w</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span> <span class="o">!=</span> <span class="n">orig_order</span><span class="p">:</span>
-            <span class="n">out</span> <span class="o">=</span> <span class="n">out_w</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="o">*</span><span class="n">orig_order</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">out</span> <span class="o">=</span> <span class="n">out_w</span>
-        <span class="k">return</span> <span class="n">with_new_values</span><span class="p">(</span>
-            <span class="n">input_spectra</span><span class="p">,</span>
-            <span class="n">out</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
-            <span class="s2">&quot;normalization&quot;</span><span class="p">,</span>
-            <span class="n">treatment_payload</span><span class="p">,</span>
+    <span class="n">is_dask</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">chunks</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">is_dask</span> <span class="ow">and</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">_GLOBAL_METHODS</span><span class="p">:</span>
+        <span class="n">da_w</span> <span class="o">=</span> <span class="n">ensure_in_memory</span><span class="p">(</span>
+            <span class="n">da_w</span><span class="p">,</span>
+            <span class="n">caller</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;normalize(method=&quot;</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s1">&quot;)&#39;</span><span class="p">,</span>
+            <span class="n">reason</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Requires statistics across all spectra and cannot be &quot;</span>
+                <span class="s2">&quot;computed chunk-by-chunk. For memory-efficient normalisation &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;use a per-spectrum method &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">_PER_SPECTRUM_METHODS</span><span class="p">))</span><span class="si">}</span><span class="s2">).&quot;</span>
+            <span class="p">),</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
         <span class="p">)</span>
+        <span class="n">is_dask</span> <span class="o">=</span> <span class="kc">False</span>
 
-    <span class="k">return</span> <span class="n">normalized_spectra</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">target_shape_w</span><span class="p">)</span></div>
+    <span class="k">if</span> <span class="n">is_dask</span><span class="p">:</span>
+        <span class="c1"># Per-spectrum method: process each chunk independently.</span>
+        <span class="n">kernel</span> <span class="o">=</span> <span class="n">_make_apply_ufunc_kernel</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">x_values</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">out_w</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">apply_ufunc</span><span class="p">(</span>
+            <span class="n">kernel</span><span class="p">,</span>
+            <span class="n">da_w</span><span class="p">,</span>
+            <span class="n">input_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">sdim</span><span class="p">]],</span>
+            <span class="n">output_core_dims</span><span class="o">=</span><span class="p">[[</span><span class="n">sdim</span><span class="p">]],</span>
+            <span class="n">dask</span><span class="o">=</span><span class="s2">&quot;parallelized&quot;</span><span class="p">,</span>
+            <span class="n">output_dtypes</span><span class="o">=</span><span class="p">[</span><span class="n">da_w</span><span class="o">.</span><span class="n">dtype</span><span class="p">],</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Eager path: run the existing NumPy kernel.</span>
+        <span class="n">spectra_2d</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">da_w</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">out_2d</span> <span class="o">=</span> <span class="n">_normalize_numpy_block</span><span class="p">(</span><span class="n">spectra_2d</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">x_values</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">packed</span> <span class="o">=</span> <span class="n">reshape_row_stack_to</span><span class="p">(</span><span class="n">out_2d</span><span class="p">,</span> <span class="n">da_w</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">out_w</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">packed</span><span class="p">)</span>
 
+    <span class="k">if</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">out_w</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span> <span class="o">!=</span> <span class="n">orig_order</span><span class="p">:</span>
+        <span class="n">out_w</span> <span class="o">=</span> <span class="n">out_w</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="o">*</span><span class="n">orig_order</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">with_new_values</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="n">out_w</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s2">&quot;normalization&quot;</span><span class="p">,</span> <span class="n">treatment_payload</span><span class="p">)</span>
 </pre></div>
 
            </div>
