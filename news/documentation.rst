@@ -1,6 +1,6 @@
 **Added:**
 
-* <news item>
+* Added test data for the new API.
 
 **Changed:**
 

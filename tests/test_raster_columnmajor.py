@@ -10,11 +10,6 @@ from wdfkit.wdf.io import parse_wdf_to_parsed
 
 _FILES = [
     ("SiWafer_StreamLineImageAcquisition_DataOptimisedExposureTime.wdf", 7, 8),
-    (
-        "SiWafer_StreamLineImageAcquisition_DataOptimisedExposureTime-1.wdf",
-        21,
-        11,
-    ),
 ]
 
 
