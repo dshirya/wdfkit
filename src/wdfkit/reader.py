@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Public :class:`WDFReader` API."""
+"""Public :class:`WDFReader` API plus module-level :func:`read` and
+:func:`classify`."""
 
 from __future__ import annotations
 
 import os
 from typing import Union
 
-from .wdf.io import read_wdf_file
+import xarray as xr
+
+from .wdf.dispatch import classify_kind, dispatch
+from .wdf.io import parse_wdf_header, parse_wdf_to_parsed
 
 StrPath = Union[str, os.PathLike[str]]
 
@@ -26,24 +30,12 @@ class WDFReader:
     ----------
     spectral_dim
         Name for the spectral axis coordinate (default ``None`` /
-        ``\"auto\"``). WiRE ``XLST`` ``XlistDataUnits`` selects the default
-        (e.g. ``Nanometre`` → dimension ``\"nm\"``). Set to ``\"shifts\"`` for
-        legacy notebooks.
+        ``"auto"``).  WiRE ``XLST`` ``XlistDataUnits`` selects the
+        default (e.g. ``RamanShift`` → dimension ``"raman_shift"``).
+        Set to ``"shifts"`` for legacy notebooks.
     chunks
-        Enable lazy Dask-backed reading to handle large maps without loading
-        the full data into RAM.
-
-        - ``False`` (default): eager — entire DATA block is read into a
-          NumPy array immediately, matching the previous behaviour.
-        - ``True``: lazy — auto-compute chunk size targeting ~128 MB per
-          chunk along the Y (row) axis, capped at 20 chunks.
-        - ``int``: lazy — use that value as the target chunk size in MB
-          (e.g. ``chunks=256`` targets 256 MB per chunk).
-
-        Before reading, ``WDFReader`` checks available RAM. If the full
-        array would exceed free RAM it raises ``MemoryError`` and asks you
-        to re-open with ``chunks=True``. A ``UserWarning`` is emitted if
-        the array would use more than 75 % of free RAM.
+        Enable lazy Dask-backed reading.  ``False`` (default) = eager;
+        ``True`` = auto-chunk at ~128 MB per chunk; ``int`` = target MB.
     """
 
     def __init__(
@@ -62,14 +54,86 @@ class WDFReader:
         )
         self._spectral_dim = spectral_dim
         self._chunks = chunks
-        self.data, self.image = read_wdf_file(
+
+        parsed = parse_wdf_to_parsed(
             self._path,
-            self._verbose,
-            self._time_coord,
-            self._spectral_dim,
+            verbose=self._verbose,
+            time_coord=self._time_coord,
+            spectral_dim=self._spectral_dim,
             chunks=self._chunks,
         )
+        # Override spectral dim name when explicitly requested
+        if spectral_dim and spectral_dim != "auto":
+            parsed.xlst.dim_name = spectral_dim
+
+        self.data: xr.DataArray = dispatch(parsed)
+        self.image = parsed.img
 
     def __iter__(self):
         yield self.data
         yield self.image
+
+
+# ---------------------------------------------------------------------------
+# Module-level convenience API
+# ---------------------------------------------------------------------------
+
+
+def read(
+    path: StrPath,
+    *,
+    verbose: bool = False,
+    spectral_dim: str | None = None,
+    chunks: bool | int = False,
+) -> xr.DataArray:
+    """Read a WiRE ``.wdf`` file and return a :class:`xarray.DataArray`.
+
+    Parameters
+    ----------
+    path
+        Path to the ``.wdf`` file.
+    spectral_dim
+        Override for the spectral-axis dimension name.
+    chunks
+        Dask chunking: ``False`` (eager), ``True`` (auto), or int (target MB).
+
+    Returns
+    -------
+    xarray.DataArray
+        Shape and dims depend on scan kind; spectral axis is always last.
+    """
+    parsed = parse_wdf_to_parsed(
+        path,
+        verbose=verbose,
+        spectral_dim=spectral_dim,
+        chunks=chunks,
+    )
+    if spectral_dim and spectral_dim != "auto":
+        parsed.xlst.dim_name = spectral_dim
+    return dispatch(parsed)
+
+
+def classify(path: StrPath) -> dict:
+    """Return scan classification for a WiRE ``.wdf`` file *without*
+    loading the spectral data.
+
+    Returns
+    -------
+    dict
+        Keys: ``kind``, ``measurement_type``, ``scan_type``,
+        ``wmap_flag``, ``nspectra``, ``npoints``, ``nsteps``.
+    """
+    parsed = parse_wdf_header(path)
+    kind = classify_kind(parsed)
+    info: dict = {
+        "kind": kind,
+        "measurement_type": parsed.params.get("MeasurementType", ""),
+        "scan_type": parsed.params.get("ScanType", ""),
+        "wmap_flag": parsed.wmap.flag if parsed.wmap else None,
+        "nspectra": parsed.nspectra,
+        "npoints": parsed.npoints,
+        "nsteps": (
+            parsed.wmap.nsteps.tolist() if parsed.wmap is not None else None
+        ),
+    }
+    return info

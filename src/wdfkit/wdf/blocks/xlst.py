@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from ...internal import constants as const
 from ...spectral import resolve_spectral_axis
+from .. import constants as const
 from ..binary_io import read_from_file
 from ..block_index import indices_named
 from ..parse_context import ParseContext

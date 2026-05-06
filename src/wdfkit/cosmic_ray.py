@@ -11,7 +11,6 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
-from .internal.utils import ensure_in_memory
 from .preprocessing._common import resolve_spectral_dim, with_new_values
 from .preprocessing.cosmic_ray_1d import (
     SingleSpectrumMethod,
@@ -19,6 +18,7 @@ from .preprocessing.cosmic_ray_1d import (
 )
 from .preprocessing.cosmic_ray_map import correct_cosmic_rays_on_map_cube
 from .preprocessing.spectral_harmonic_removal import harmonic_correct_dataarray
+from .wdf.utils import ensure_in_memory
 
 
 @dataclass

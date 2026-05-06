@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ...internal import constants as const
+from .. import constants as const
 from ..binary_io import read_from_file
 from ..block_index import indices_named
 from ..parse_context import ParseContext
@@ -25,5 +25,8 @@ def parse_ylst(ctx: ParseContext) -> None:
         y_values_count = int((ctx.blocks["BlockSizes"][i] - 24) / 4)
         if y_values_count > 1:
             y_values = read_from_file(ctx.f, "<f", count=y_values_count)
+            ctx.ylst_values = y_values
+            ctx.ylst_data_type = ctx.params.get("YlistDataType", "")
+            ctx.ylst_units = ctx.params.get("YlistDataUnits", "")
             if ctx.verbose:
                 print(y_values)

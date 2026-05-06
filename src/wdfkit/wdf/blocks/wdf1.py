@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from ...internal import constants as const
-from ...internal.utils import convert_time
+from .. import constants as const
 from ..binary_io import read_from_file
 from ..block_index import indices_named
 from ..parse_context import ParseContext
+from ..utils import convert_time
 
 
 def parse_wdf1(ctx: ParseContext) -> None:
@@ -39,10 +39,16 @@ def parse_wdf1(ctx: ParseContext) -> None:
             + " build "
             + str(version[-1])
         )
-        ctx.params["ScanType"] = const.SCAN_TYPES[read_from_file(ctx.f)]
-        ctx.params["MeasurementType"] = const.MEASUREMENT_TYPES[
-            read_from_file(ctx.f)
-        ]
+        scan_type_raw = int(read_from_file(ctx.f))
+        ctx.scan_type_raw = scan_type_raw
+        ctx.params["ScanType"] = const.SCAN_TYPES.get(
+            scan_type_raw, str(scan_type_raw)
+        )
+        mtype_raw = int(read_from_file(ctx.f))
+        ctx.measurement_type_raw = mtype_raw
+        ctx.params["MeasurementType"] = const.MEASUREMENT_TYPES.get(
+            mtype_raw, str(mtype_raw)
+        )
         ctx.params["StartTime"] = convert_time(
             0.1 * read_from_file(ctx.f, dtype=np.uint64)
         )

@@ -1,31 +1,16 @@
 **Added:**
 
-* 2D data arrays are now supported in ``CosmicRayRemover`` (treated as line scans).
-* ``CosmicRayRemover`` gains a ``max_passes`` parameter (default 3) for iterative
-  1D cosmic-ray detection: each pass runs on the already-repaired signal so that
-  large spikes no longer hide smaller ones.
+* Support 2-D data arrays in ``CosmicRayRemover`` (treated as line scans).
+* Add ``max_passes`` parameter (default ``3``) to ``CosmicRayRemover`` for
+  iterative 1-D cosmic-ray detection so that large spikes no longer hide
+  smaller ones.
 
 **Changed:**
 
-* 1D spike repair now always uses linear interpolation from the original signal
-  (was: ``"median"`` method replaced spikes with the biased median-filter value).
-* The 1D spike mask is dilated by 1 channel on each side before repair to cover
+* Use linear interpolation from the original signal for 1-D spike repair in
+  all cases (was: ``"median"`` method replaced spikes with the biased
+  median-filter value).
+* Dilate the 1-D spike mask by 1 channel on each side before repair to cover
   sub-threshold spike edges.
-* Error messages from ``CosmicRayRemover`` now include the ``DataArray`` name and
-  file identifier for easier debugging.
-
-**Deprecated:**
-
-* <news item>
-
-**Removed:**
-
-* <news item>
-
-**Fixed:**
-
-* <news item>
-
-**Security:**
-
-* <news item>
+* Include the ``DataArray`` name and file identifier in ``CosmicRayRemover``
+  error messages for easier debugging.
