@@ -21,7 +21,9 @@ To get started, please visit the :ref:`Getting started <getting-started>` page.
 Authors
 =======
 
-``wdfkit`` is developed by Danila Shiryaev. This project is maintained by Danila Shiryaev. For a detailed list of contributors see
+``wdfkit`` is developed by Danila Shiryaev with help and assistance from
+Dejan Skrelic. The project is maintained by Danila Shiryaev. For a detailed
+list of contributors see
 https://github.com/dshirya/wdfkit/graphs/contributors.
 
 ============
