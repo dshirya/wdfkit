@@ -9,11 +9,11 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from ...internal import constants as const
-from ...internal.utils import convert_time, pad_if_unfinished
+from .. import constants as const
 from ..binary_io import read_from_file
 from ..block_index import indices_named
 from ..parse_context import ParseContext
+from ..utils import convert_time, pad_if_unfinished
 
 _EPOCH = datetime(year=1601, month=1, day=1, tzinfo=timezone.utc)
 
@@ -28,10 +28,13 @@ def parse_orgn(ctx: ParseContext) -> None:
             nb_origin_sets == ctx.params["DataOriginCount"]
         ), "Not the same!?"
         for _set_n in range(nb_origin_sets):
-            data_type_flag = read_from_file(ctx.f).astype(np.uint16)
+            raw_type = int(read_from_file(ctx.f))
+            is_primary = bool(raw_type & 0x80000000)
+            data_type_flag = raw_type & 0x7FFFFFFF
             data_type = const.DATA_TYPES.get(
                 data_type_flag, f"{data_type_flag}_unknown"
             )
+            ctx.origin_is_primary.append(is_primary)
             ctx.origin_set_dtypes.append(data_type)
             coord_units_flag = read_from_file(ctx.f)
             coord_units = const.DATA_UNITS.get(
@@ -55,8 +58,7 @@ def parse_orgn(ctx: ParseContext) -> None:
                 else:
                     recording_time = convert_time(microseconds_from_epoch)
 
-                if recording_time.ndim == 0:
-                    recording_time = np.expand_dims(recording_time, 0)
+                recording_time = np.atleast_1d(recording_time)
 
                 if ctx.params["Count"] < ctx.params["Capacity"]:
                     recording_time = pad_if_unfinished(

@@ -21,7 +21,7 @@ def single_da():
 
 @pytest.fixture(scope="module")
 def map_da():
-    da, _ = WDFReader(TEST_DATA / "test_2.wdf")
+    da, _ = WDFReader(TEST_DATA / "test_map.wdf")
     return da
 
 
@@ -35,11 +35,16 @@ def test_normalize_default_spectral_dim_matches_reader(single_da):
     assert np.all((out.values >= -1e-9) & (row_span > 0.95))
 
 
-def test_normalize_explicit_spectral_dim_when_not_last(single_da):
-    da = single_da.transpose("nm", "Time")
-    assert da.dims[0] == "nm"
-    out = normalize(da, method="min_max", spectral_dim="nm")
-    assert out.dims == da.dims
+def test_normalize_explicit_spectral_dim_when_not_last(map_da):
+    # Build a 2D array with spectral dim first (not last) using the map.
+    # map_da has dims (y, x, wavelength_nm) — stack y/x and put spectral first.
+    da_2d = map_da.isel(y=0)  # (x, wavelength_nm)
+    da_spec_first = da_2d.transpose("wavelength_nm", "x")
+    assert da_spec_first.dims[0] == "wavelength_nm"
+    out = normalize(
+        da_spec_first, method="min_max", spectral_dim="wavelength_nm"
+    )
+    assert out.dims == da_spec_first.dims
     # min_max to [0, 1] per spectrum; final min-subtract leaves [0, 1].
     assert float(np.nanmax(out.values)) <= 1.0 + 1e-6
     assert float(np.nanmin(out.values)) >= -1e-6

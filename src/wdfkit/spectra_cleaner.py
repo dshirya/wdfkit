@@ -15,7 +15,6 @@ from typing import Any, Literal
 import numpy as np
 import xarray as xr
 
-from .internal.utils import ensure_in_memory
 from .preprocessing._common import (
     reshape_row_stack_to,
     resolve_spectral_dim,
@@ -23,6 +22,7 @@ from .preprocessing._common import (
     with_new_values,
 )
 from .preprocessing.pca_clean import NComponents, denoise_spectra_pca
+from .wdf.utils import ensure_in_memory
 
 CleanMethod = Literal["pca"]
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ...internal import constants as const
+from .. import constants as const
 from ..binary_io import read_from_file
 from ..block_index import indices_named
 from ..parse_context import ParseContext
@@ -16,8 +16,11 @@ def parse_wmap(ctx: ParseContext) -> None:
     for i in indices_named(ctx.blocks, name):
         ctx.print_block_header(name, i)
         ctx.f.seek(ctx.blocks["BlockOffsets"][i] + 16)
-        m_flag = read_from_file(ctx.f)
-        ctx.map_params["MapAreaType"] = const.MAP_TYPES[m_flag]
+        m_flag = int(read_from_file(ctx.f))
+        ctx.wmap_flag_raw = m_flag
+        ctx.map_params["MapAreaType"] = const.MAP_TYPES.get(
+            m_flag, str(m_flag)
+        )
         read_from_file(ctx.f)
         ctx.map_params["InitialCoordinates"] = np.round(
             read_from_file(ctx.f, "<f", count=3), 2

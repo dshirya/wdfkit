@@ -30,7 +30,16 @@ class ParseContext:
     origin_labels: list = field(default_factory=list)
     origin_set_dtypes: list = field(default_factory=list)
     origin_set_units: list = field(default_factory=list)
+    origin_is_primary: list = field(default_factory=list)
     chunks: bool | int = False  # False = eager; True or int MB = lazy/dask
+    # YLST values (stored for linefocus handler)
+    ylst_values: object = None  # np.ndarray or None
+    ylst_data_type: str = ""
+    ylst_units: str = ""
+    # Raw integer fields needed by ParsedWDF / classify
+    measurement_type_raw: int = 0
+    scan_type_raw: int = 0
+    wmap_flag_raw: int = 0
 
     def print_block_header(self, name: str, index: int) -> None:
         if self.verbose:
