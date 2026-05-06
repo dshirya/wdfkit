@@ -32,12 +32,15 @@
 
 .. image:: https://raw.githubusercontent.com/dshirya/wdfkit/main/docs/source/img/logo.png
         :alt: wdfkit logo
-        :width: 400px
+        :width: 600px
         :align: center
 
-Python package for WDF data treatment
+About ``wdfkit``
+----------------
 
-* LONGER DESCRIPTION HERE
+``wdfkit`` is a Python toolkit for **Renishaw WiRE** ``.wdf`` spectroscopy data—especially **Raman** and **photoluminescence** work. It helps you bring measurements out of the instrument format so you can explore and analyse them in Python: load single spectra, line scans, and maps; interpret wavelength or Raman-shift axes consistently; and prepare data with everyday steps such as **normalization**, **cosmic-ray spike removal**, reduction of **laser-related spectral artefacts**, and **noise suppression** for stacks of spectra.
+
+The project is **inspired by** `spectrapy <https://gitlab.in2p3.fr/dejan.skrelic/spectrapy>`__ by **Dejan Skrelic**—an earlier tool that shaped how spectroscopy users treat this kind of data.
 
 For more information about the wdfkit library, please consult our `online documentation <https://dshirya.github.io/wdfkit>`_.
 
@@ -132,5 +135,7 @@ For more information on wdfkit please visit the project `web-page <https://dshir
 
 Acknowledgements
 ----------------
+
+``wdfkit`` draws conceptual inspiration from `spectrapy <https://gitlab.in2p3.fr/dejan.skrelic/spectrapy>`__ by Dejan Skrelic.
 
 ``wdfkit`` is built and maintained with `scikit-package <https://scikit-package.github.io/scikit-package/>`_.
