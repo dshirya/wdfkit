@@ -15,7 +15,15 @@ if TYPE_CHECKING:
 
 
 def build_dataarray(parsed: "ParsedWDF") -> xr.DataArray:
-    """Return a 4-D DataArray ``(z, y, x, spectral_dim)``."""
+    """Return a 4-D DataArray ``(z, y, x, spectral_dim)``.
+
+    .. note::
+        Not yet supported. Raises :exc:`NotImplementedError`.
+    """
+    raise NotImplementedError(
+        "Volume scans (kind='volume', 4-D output z/y/x/spectral) are not "
+        "supported yet. Use a raster or series scan instead."
+    )
     sdim = parsed.xlst.dim_name
     assert parsed.wmap is not None, "volume requires a WMAP block"
     nx = int(parsed.wmap.nsteps[0])

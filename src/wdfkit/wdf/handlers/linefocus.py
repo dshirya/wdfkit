@@ -26,7 +26,14 @@ def build_dataarray(parsed: "ParsedWDF") -> xr.DataArray:
     If WMAP is present the spatial (y, x) dims are filled from ORGN
     SpatialX / SpatialY.  Otherwise ``x`` / ``y`` dims are integer
     indices.
+
+    .. note::
+        Not yet supported. Raises :exc:`NotImplementedError`.
     """
+    raise NotImplementedError(
+        "LineFocus scans (kind='linefocus', 4-D output y/x/line_y/spectral) "
+        "are not supported yet."
+    )
     sdim = parsed.xlst.dim_name
     assert parsed.wmap is not None, "linefocus requires a WMAP block"
     nx_map = int(parsed.wmap.nsteps[0])

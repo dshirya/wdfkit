@@ -180,6 +180,15 @@ def test_spectra_cleaner_single_spectrum_raises():
         SpectraCleaner().clean(da)
 
 
+def test_spectra_cleaner_1d_single_spectrum_raises():
+    da = xr.DataArray(
+        np.random.default_rng(99).random(50),
+        dims=("raman_shift",),
+    )
+    with pytest.raises(ValueError, match="1-D single spectrum"):
+        SpectraCleaner().clean(da)
+
+
 def test_spectra_cleaner_wrong_type_raises():
     arr = np.random.default_rng(7).random((10, 50))
     with pytest.raises(TypeError, match="xarray.DataArray"):

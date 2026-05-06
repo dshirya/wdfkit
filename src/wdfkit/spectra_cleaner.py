@@ -149,6 +149,14 @@ class SpectraCleaner:
         spatial_shape = da_w.shape[:-1]
         n_spectra = int(np.prod(spatial_shape)) if spatial_shape else 1
         if n_spectra < 2:
+            if spectra.ndim == 1:
+                raise ValueError(
+                    "SpectraCleaner received a 1-D single spectrum "
+                    f"(shape={tuple(spectra.shape)}). PCA denoising requires "
+                    "a population of spectra. For single-spectrum smoothing, "
+                    "use a 1-D filter (Savitzky-Golay or Whittaker-Eilers) "
+                    "instead."
+                )
             raise ValueError(
                 "SpectraCleaner needs more than one spectrum (PCA on a "
                 "single spectrum is degenerate). Got input with shape "
