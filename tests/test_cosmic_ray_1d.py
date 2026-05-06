@@ -1,10 +1,13 @@
-"""Unit tests for :func:`wdfkit.cosmic_ray.remove_cosmic_rays_1d`."""
+"""Unit tests for :func:`wdfkit.cosmic_ray.remove_cosmic_rays_1d` and
+:class:`wdfkit.CosmicRayRemover` with 1-D input."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
+import xarray as xr
 
+from wdfkit import CosmicRayRemover
 from wdfkit.cosmic_ray import remove_cosmic_rays_1d
 
 
@@ -55,3 +58,41 @@ def test_remove_cosmic_rays_1d_casts_to_float64():
     y = np.arange(25, dtype=np.int32)
     out, _ = remove_cosmic_rays_1d(y, "median", kernel_size=5)
     assert out.dtype == np.float64
+
+
+# ---------------------------------------------------------------------------
+# CosmicRayRemover with 1-D DataArray (single spectrum from WDFReader)
+# ---------------------------------------------------------------------------
+
+
+def _make_1d_da(n: int = 80, *, rng=None) -> xr.DataArray:
+    if rng is None:
+        rng = np.random.default_rng(42)
+    data = rng.random(n).astype(np.float64) + 10.0
+    return xr.DataArray(
+        data, dims=("raman_shift",), coords={"raman_shift": np.arange(n)}
+    )
+
+
+def test_remover_1d_shape_and_dims_preserved():
+    da = _make_1d_da()
+    out = CosmicRayRemover().remove_cosmic_rays(da)
+    assert out.shape == da.shape
+    assert out.dims == da.dims
+
+
+def test_remover_1d_with_diagnostics():
+    da = _make_1d_da()
+    out, diag = CosmicRayRemover().remove_cosmic_rays_with_diagnostics(da)
+    assert out.shape == da.shape
+    assert "cosmic_mask" in diag
+    assert diag["cosmic_mask"].shape == (da.shape[0],)
+
+
+def test_remover_1d_spike_removed():
+    rng = np.random.default_rng(7)
+    da = _make_1d_da(rng=rng)
+    da_spike = da.copy(data=da.values.copy())
+    da_spike.values[40] = 5000.0
+    out = CosmicRayRemover(threshold=3.0).remove_cosmic_rays(da_spike)
+    assert out.values[40] < da_spike.values[40] / 5

@@ -32,10 +32,14 @@ class CosmicRayRemover:
     **per-λ scaled MAD** cutoffs and noisy-band ``relax_λ``; repair by
     **spectral interpolation** (not copying the full median surface).
 
-    **Single spectrum / line scan** (2D or 1×1 map): see
+    **Single spectrum** (1D ``(n_spectral,)`` or 2D ``(1, n_spectral)``): see
     :func:`remove_cosmic_rays_1d` — up to ``max_passes`` iterations of
     ``scipy.signal.medfilt``-based MAD detection, mask dilation by 1 channel,
     and linear-interpolation repair from the original signal.
+
+    **Line scan / point collection** (2D ``(n_spatial, n_spectral)``): treated
+    as a 1-column map so that neighbouring spectra along the scan axis inform
+    the spatial median reference.
 
     Parameters
     ----------
@@ -203,6 +207,8 @@ class CosmicRayRemover:
 
     def remove_cosmic_rays(self, spectrum: xr.DataArray) -> xr.DataArray:
         """Spike removal only (no harmonic notch)."""
+        if spectrum.ndim == 1:
+            return self._single_spectrum_output(spectrum, spectrum.values)
         # Treat a 2-D line scan (n_spatial, n_spectral) as a one-row map.
         if spectrum.ndim == 2 and spectrum.shape[0] > 1:
             tmp = spectrum.expand_dims(dim="__x__", axis=1)
@@ -243,9 +249,9 @@ class CosmicRayRemover:
         if spectrum.ndim == 2 and spectrum.shape[0] == 1:
             return self._single_spectrum_output(spectrum, spectrum.values[0])
         raise ValueError(
-            "CosmicRayRemover supports 3-D maps (ny, nx, n_spectral), "
-            "2-D line scans (n_spatial, n_spectral), or a single spectrum "
-            "as (1, n_spectral); got "
+            "CosmicRayRemover supports: 1-D single spectrum (n_spectral,), "
+            "2-D line scan / point collection (n_spatial, n_spectral), or "
+            "3-D map (ny, nx, n_spectral); got "
             f"ndim={spectrum.ndim}, shape={spectrum.shape} "
             f"[{self._da_label(spectrum)}]"
         )
@@ -267,6 +273,20 @@ class CosmicRayRemover:
         For 2D single-spectrum input, diagnostics contain ``cosmic_mask`` and
         ``corrected_1d`` (the 1D corrected intensity).
         """
+        if spectrum.ndim == 1:
+            resolve_spectral_dim(spectrum, self.spectral_dim)
+            corrected, mask = remove_cosmic_rays_1d(
+                spectrum.values,
+                self.single_spectrum_method,
+                kernel_size=self.kernel_size,
+                threshold=self.threshold,
+                max_passes=self.max_passes,
+            )
+            meta_1d = self._build_cr_meta_1d(mask)
+            out = with_new_values(
+                spectrum, corrected, "Cosmic Ray Correction", meta_1d
+            )
+            return out, {"cosmic_mask": mask, "corrected_1d": corrected}
         # Treat a 2-D line scan (n_spatial, n_spectral) as a one-row map.
         if spectrum.ndim == 2 and spectrum.shape[0] > 1:
             tmp = spectrum.expand_dims(dim="__x__", axis=1)
@@ -345,9 +365,9 @@ class CosmicRayRemover:
             )
             return out, {"cosmic_mask": mask, "corrected_1d": corrected}
         raise ValueError(
-            "CosmicRayRemover supports 3-D maps (ny, nx, n_spectral), "
-            "2-D line scans (n_spatial, n_spectral), or a single spectrum "
-            "as (1, n_spectral); got "
+            "CosmicRayRemover supports: 1-D single spectrum (n_spectral,), "
+            "2-D line scan / point collection (n_spatial, n_spectral), or "
+            "3-D map (ny, nx, n_spectral); got "
             f"ndim={spectrum.ndim}, shape={spectrum.shape} "
             f"[{self._da_label(spectrum)}]"
         )
