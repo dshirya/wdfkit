@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from wdfkit import SpectraCleaner
+from wdfkit import SpectraCleaner, SpectraSmoother
 from wdfkit.preprocessing.pca_clean import denoise_spectra_pca
 
 # ---------------------------------------------------------------------------
@@ -180,15 +180,6 @@ def test_spectra_cleaner_single_spectrum_raises():
         SpectraCleaner().clean(da)
 
 
-def test_spectra_cleaner_1d_single_spectrum_raises():
-    da = xr.DataArray(
-        np.random.default_rng(99).random(50),
-        dims=("raman_shift",),
-    )
-    with pytest.raises(ValueError, match="1-D single spectrum"):
-        SpectraCleaner().clean(da)
-
-
 def test_spectra_cleaner_wrong_type_raises():
     arr = np.random.default_rng(7).random((10, 50))
     with pytest.raises(TypeError, match="xarray.DataArray"):
@@ -201,3 +192,59 @@ def test_spectra_cleaner_dask_warns_and_computes():
     with pytest.warns(UserWarning, match="Dask"):
         out = sc.clean(da)
     assert out.chunks is None  # result is NumPy-backed
+
+
+# ---------------------------------------------------------------------------
+# SpectraCleaner → SpectraSmoother delegation
+# ---------------------------------------------------------------------------
+
+
+def _make_1d_da(n: int = 80) -> xr.DataArray:
+    data = np.random.default_rng(50).random(n).astype(np.float64) + 5.0
+    return xr.DataArray(
+        data,
+        dims=("raman_shift",),
+        coords={"raman_shift": np.arange(n)},
+        attrs={"treatments": {}},
+    )
+
+
+def test_cleaner_1d_delegates_to_smoother():
+    da = _make_1d_da()
+    out = SpectraCleaner().clean(da)
+    assert out.shape == da.shape
+    assert out.dims == da.dims
+    meta = out.attrs["treatments"]["spectra_cleaning"]
+    assert meta["method"] == "savgol"
+
+
+def test_cleaner_1d_custom_smoother():
+    da = _make_1d_da()
+    out = SpectraCleaner(
+        smoother=SpectraSmoother(method="whittaker", lam=500.0)
+    ).clean(da)
+    meta = out.attrs["treatments"]["spectra_cleaning"]
+    assert meta["method"] == "whittaker"
+
+
+def test_cleaner_per_spectrum_2d():
+    da = _make_da((20, 40))
+    out = SpectraCleaner(per_spectrum=True).clean(da)
+    assert out.shape == da.shape
+    assert out.dims == da.dims
+    meta = out.attrs["treatments"]["spectra_cleaning"]
+    assert meta["method"] == "savgol"
+
+
+def test_cleaner_per_spectrum_3d():
+    da = _make_da((3, 4, 40))
+    out = SpectraCleaner(per_spectrum=True).clean(da)
+    assert out.shape == da.shape
+    assert out.dims == da.dims
+
+
+def test_cleaner_1d_no_decomposition():
+    da = _make_1d_da()
+    out, payload = SpectraCleaner().clean_with_decomposition(da)
+    assert out.shape == da.shape
+    assert payload == {}

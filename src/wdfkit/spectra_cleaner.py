@@ -2,15 +2,16 @@
 """
 High-level spectral denoising: :class:`SpectraCleaner`.
 
-Currently implements PCA-based reconstruction (legacy ``pca_clean``); the
-``method`` switch is kept so other denoisers can be added (e.g. Savitzky-
-Golay or wavelet) without breaking callers.
+PCA-based reconstruction for multi-spectrum inputs (2D/3D).  For 1-D single
+spectra — or any input when ``per_spectrum=True`` — delegates automatically
+to :class:`~wdfkit.spectra_smoother.SpectraSmoother` (Savitzky-Golay by
+default).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -24,6 +25,9 @@ from .preprocessing._common import (
 from .preprocessing.pca_clean import NComponents, denoise_spectra_pca
 from .wdf.utils import ensure_in_memory
 
+if TYPE_CHECKING:
+    from .spectra_smoother import SpectraSmoother
+
 CleanMethod = Literal["pca"]
 
 _TREATMENT_KEY = "spectra_cleaning"
@@ -31,36 +35,43 @@ _TREATMENT_KEY = "spectra_cleaning"
 
 @dataclass
 class SpectraCleaner:
-    """Denoise a population of spectra by low-rank reconstruction.
+    """Denoise a population of spectra by low-rank PCA reconstruction.
 
-    Designed for **3D map cubes** ``(ny, nx, n_spectral)`` and **2D stacks**
-    ``(n_spectra, n_spectral)``. PCA reconstruction needs more than one
-    spectrum to separate shared signal from per-channel noise — a single
-    spectrum is rejected with a clear error (use a 1D smoother instead).
+    **Multi-spectrum inputs** (2D stacks ``(n_spectra, spectral)`` or 3D map
+    cubes ``(y, x, spectral)``): uses PCA to separate shared signal from
+    per-channel noise.
+
+    **1-D single spectrum** ``(spectral,)`` or any input when
+    ``per_spectrum=True``: delegates to
+    :class:`~wdfkit.spectra_smoother.SpectraSmoother` (Savitzky-Golay by
+    default).  Pass a pre-configured ``SpectraSmoother`` via the ``smoother``
+    parameter to change the method or its settings.
 
     Parameters
     ----------
     method
-        Denoising method. Currently only ``\"pca\"`` is implemented; the
-        switch is kept for forward compatibility.
+        PCA denoising method. Currently only ``\"pca\"``; kept for forward
+        compatibility.
     n_components
         Forwarded to :class:`sklearn.decomposition.PCA`. ``\"mle\"``
         (default), a ``float`` in ``(0, 1)`` for variance-explained,
         an ``int`` count, or ``None`` for ``min(n_spectra, n_spectral)``.
     subtract_min
-        Subtract per-spectrum min before the fit (legacy default ``True``).
-        PCA also mean-centers internally, so this only changes the baseline
-        offset fed to the fit.
+        Subtract per-spectrum min before the PCA fit.
     restore_min
-        Add the saved per-spectrum min back after reconstruction. Off by
-        default (legacy behavior); enable to preserve absolute intensities.
+        Add the saved per-spectrum min back after reconstruction.
     spectral_dim
-        Name of the spectral axis in DataArray inputs. Defaults to the last
-        dimension; pass when spectra are not last (e.g. ``\"raman_shift\"``
-        with leading spectral axis).
+        Name of the spectral axis. Defaults to the last dimension.
     pca_kwargs
-        Extra kwargs forwarded to :class:`sklearn.decomposition.PCA`
-        (e.g. ``{\"svd_solver\": \"full\"}``).
+        Extra kwargs forwarded to :class:`sklearn.decomposition.PCA`.
+    per_spectrum
+        If ``True``, bypass PCA and apply ``smoother`` independently to
+        every spectrum regardless of input dimensionality.  Useful when
+        you want 1-D-style smoothing on a 2D/3D dataset.
+    smoother
+        A :class:`~wdfkit.spectra_smoother.SpectraSmoother` instance used
+        for 1-D input and when ``per_spectrum=True``.  ``None`` (default)
+        creates a ``SpectraSmoother()`` with Savitzky-Golay defaults.
     """
 
     method: CleanMethod = "pca"
@@ -69,6 +80,8 @@ class SpectraCleaner:
     restore_min: bool = False
     spectral_dim: str | None = None
     pca_kwargs: dict[str, Any] = field(default_factory=dict)
+    per_spectrum: bool = False
+    smoother: "SpectraSmoother | None" = None
 
     def __post_init__(self) -> None:
         allowed: tuple[str, ...] = ("pca",)
@@ -88,9 +101,12 @@ class SpectraCleaner:
                 f"int n_components must be >= 1, got {self.n_components}"
             )
 
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
     def clean(self, spectra: xr.DataArray) -> xr.DataArray:
-        """Return a denoised copy of ``spectra`` (no decomposition
-        payload)."""
+        """Return a denoised copy of ``spectra`` (no decomposition payload)."""
         cleaned, meta, _ = self._clean_core(
             spectra, return_decomposition=False
         )
@@ -102,22 +118,35 @@ class SpectraCleaner:
     ) -> tuple[xr.DataArray, dict[str, Any]]:
         """Like :meth:`clean`, but also returns the PCA decomposition.
 
-        The returned ``decomposition`` dict has keys ``components`` (shape
-        ``(n_components, n_spectral)``), ``coeffs`` (per-spectrum scores
-        reshaped to the input's spatial layout + components axis), ``mean``,
-        ``explained_variance``, ``explained_variance_ratio``, and
-        ``noise_variance``. These arrays can be large — they're returned
-        separately rather than written to ``DataArray.attrs``.
+        When the smoother path is taken (1-D input or ``per_spectrum=True``),
+        the returned payload is ``{}`` — no decomposition is available for
+        per-spectrum filtering.
+
+        The PCA payload has keys ``components``, ``coeffs``, ``mean``,
+        ``explained_variance``, ``explained_variance_ratio``,
+        ``noise_variance``.
         """
         cleaned, meta, payload = self._clean_core(
             spectra, return_decomposition=True
         )
         out = with_new_values(spectra, cleaned, _TREATMENT_KEY, meta)
-        return out, payload
+        return out, payload if payload is not None else {}
 
     def transform(self, spectra: xr.DataArray) -> xr.DataArray:
         """Alias of :meth:`clean`."""
         return self.clean(spectra)
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _get_smoother(self) -> "SpectraSmoother":
+        """Return the configured smoother, or a default one."""
+        if self.smoother is not None:
+            return self.smoother
+        from .spectra_smoother import SpectraSmoother
+
+        return SpectraSmoother()
 
     def _clean_core(
         self,
@@ -125,14 +154,20 @@ class SpectraCleaner:
         *,
         return_decomposition: bool,
     ) -> tuple[np.ndarray, dict[str, Any], dict[str, Any] | None]:
-        """Validate input, transpose spectral last, run PCA, restore
-        order."""
+        """Route to smoother or PCA, return ``(cleaned, meta, payload)``."""
         if not isinstance(spectra, xr.DataArray):
             raise TypeError(
                 "SpectraCleaner.clean expects an xarray.DataArray; got "
                 f"{type(spectra).__name__}"
             )
 
+        # 1-D single spectrum or explicit per-spectrum flag → smoother
+        if spectra.ndim == 1 or self.per_spectrum:
+            smoother = self._get_smoother()
+            cleaned, meta = smoother._smooth_core(spectra)
+            return cleaned, meta, None
+
+        # Multi-spectrum PCA path
         sdim = resolve_spectral_dim(spectra, self.spectral_dim)
         da_w, orig_order = transpose_spectral_last(spectra, sdim)
 
@@ -147,22 +182,14 @@ class SpectraCleaner:
         )
 
         spatial_shape = da_w.shape[:-1]
-        n_spectra = int(np.prod(spatial_shape)) if spatial_shape else 1
+        n_spectra = int(np.prod(spatial_shape))
         if n_spectra < 2:
-            if spectra.ndim == 1:
-                raise ValueError(
-                    "SpectraCleaner received a 1-D single spectrum "
-                    f"(shape={tuple(spectra.shape)}). PCA denoising requires "
-                    "a population of spectra. For single-spectrum smoothing, "
-                    "use a 1-D filter (Savitzky-Golay or Whittaker-Eilers) "
-                    "instead."
-                )
             raise ValueError(
                 "SpectraCleaner needs more than one spectrum (PCA on a "
                 "single spectrum is degenerate). Got input with shape "
                 f"{tuple(spectra.shape)} → n_spectra={n_spectra} along "
-                f"non-spectral dims. For a single spectrum use a 1D "
-                "smoother (e.g. Savitzky-Golay) instead."
+                "non-spectral dims. Use per_spectrum=True or a "
+                "SpectraSmoother for single-spectrum smoothing."
             )
 
         result = denoise_spectra_pca(
