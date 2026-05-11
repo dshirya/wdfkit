@@ -126,6 +126,7 @@ def _ctx_to_parsed(ctx: ParseContext) -> ParsedWDF:
         img=ctx.img,
         exposure_time=ctx.params.get("ExposureTime"),
         laser_power=ctx.params.get("LaserPower"),
+        stage_xyz=ctx.stage_xyz,
     )
 
 

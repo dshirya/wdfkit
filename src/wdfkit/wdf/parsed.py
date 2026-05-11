@@ -95,6 +95,7 @@ class ParsedWDF:
     img: Any = None  # PIL image or None
     exposure_time: Optional[float] = None  # seconds
     laser_power: Optional[float] = None  # percent
+    stage_xyz: Optional[dict] = None  # {"x": µm, "y": µm, "z": µm} from WXIS
 
     # ------------------------------------------------------------------
     # Convenience helpers
