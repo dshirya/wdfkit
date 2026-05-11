@@ -46,6 +46,16 @@ def make_attrs(parsed: "ParsedWDF", kind: str) -> dict:
     attrs.update(parsed.params)
     attrs.update(parsed.map_params)
 
+    # Normalize WMAP InitialCoordinates from numpy array to dict
+    if "InitialCoordinates" in attrs:
+        ic = attrs["InitialCoordinates"]
+        if not isinstance(ic, dict):
+            attrs["InitialCoordinates"] = {
+                "x": float(ic[0]),
+                "y": float(ic[1]),
+                "z": float(ic[2]),
+            }
+
     # --- genuinely new attrs (no existing equivalent in params) ---
     attrs["kind"] = kind
     attrs["spectral_units"] = parsed.xlst.units

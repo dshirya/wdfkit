@@ -53,8 +53,9 @@ def parse_wxis(ctx: ParseContext) -> None:
     """Extract instrument-state parameters from the ``WXIS`` block.
 
     Sets ``ctx.params["LaserPower"]`` (float, %) when the ND-transmission
-    value is present and parseable.  Missing or malformed blocks are silently
-    ignored.
+    value is present and parseable.  Sets ``ctx.stage_xyz`` (dict with keys
+    "x", "y", "z" in µm) when stage motor positions are present.  Missing
+    or malformed blocks are silently ignored.
     """
     name = "WXIS"
     for i in indices_named(ctx.blocks, name):
@@ -69,3 +70,13 @@ def parse_wxis(ctx: ParseContext) -> None:
         nd = _parse_nd_percent(props.get("ND Transmission %"))
         if nd is not None:
             ctx.params["LaserPower"] = nd
+
+        x = props.get("XYZ Stage X Motor")
+        y = props.get("XYZ Stage Y Motor")
+        z = props.get("XYZ Stage Z Motor")
+        if any(v is not None for v in (x, y, z)):
+            ctx.stage_xyz = {
+                "x": float(x if x is not None else 0.0),
+                "y": float(y if y is not None else 0.0),
+                "z": float(z if z is not None else 0.0),
+            }

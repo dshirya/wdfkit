@@ -40,6 +40,8 @@ class ParseContext:
     measurement_type_raw: int = 0
     scan_type_raw: int = 0
     wmap_flag_raw: int = 0
+    # Stage position from WXIS (Single scans only)
+    stage_xyz: Optional[dict] = None
 
     def print_block_header(self, name: str, index: int) -> None:
         if self.verbose:

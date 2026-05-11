@@ -27,6 +27,7 @@ def build_dataarray(parsed: "ParsedWDF") -> xr.DataArray:
     attrs["ScanShape"] = (1, 1)
     attrs["RowCoord"] = None
     attrs["ColCoord"] = None
+    attrs["InitialCoordinates"] = parsed.stage_xyz
 
     sc = spectral_coord(parsed)
     da = xr.DataArray(
