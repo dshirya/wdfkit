@@ -64,7 +64,7 @@ def test_cosmic_ray_single_no_spike_unchanged():
         coords={"idx": [0], "wavenumber": np.arange(n)},
         attrs={"treatments": {}},
     )
-    cr = CosmicRayRemover(threshold=5.0, kernel_size=5)
+    cr = CosmicRayRemover(spike_threshold=5.0, spike_width=5)
     out = cr.transform(da)
     np.testing.assert_array_equal(out.values[0], spec)
     meta = out.attrs["treatments"]["Cosmic Ray Correction"]
@@ -81,7 +81,7 @@ def test_cosmic_ray_single_removes_spike():
         coords={"Time": [0.0], "nm": np.arange(n)},
         attrs={"treatments": {}},
     )
-    out = CosmicRayRemover(threshold=3.0, kernel_size=5).transform(da)
+    out = CosmicRayRemover(spike_threshold=3.0, spike_width=5).transform(da)
     assert out.values[0, 50] < da.values[0, 50] / 10
     assert (
         "CRs found (spectral indices)"
@@ -89,77 +89,44 @@ def test_cosmic_ray_single_removes_spike():
     )
 
 
-def test_cosmic_ray_single_interpolate_removes_spike():
+def test_cosmic_ray_single_wide_spike_width_removes_3ch_spike():
+    """spike_width=7 detects a 3-channel spike that spike_width=5 misses."""
     n = 200
     spec = np.linspace(0, 1, n, dtype=np.float64) + 100.0
-    spec[50] = 5000.0
+    # 3-channel spike: with kernel=5 the spike channels fill >half the window
+    # at the peak so median stays at spike level → not detected.
+    # With kernel=7 (4 non-spike channels dominate) the spike is visible.
+    spike_centre = 100
+    spec[spike_centre - 1 : spike_centre + 2] = 5000.0
     da = xr.DataArray(
         spec[np.newaxis, :],
         dims=("Time", "nm"),
         coords={"Time": [0.0], "nm": np.arange(n)},
         attrs={"treatments": {}},
     )
-    out = CosmicRayRemover(
-        threshold=3.0,
-        kernel_size=5,
-        single_spectrum_method="interpolate",
-    ).transform(da)
-    assert out.values[0, 50] < da.values[0, 50] / 10
-    assert (
-        out.attrs["treatments"]["Cosmic Ray Correction"][
-            "single_spectrum_method"
-        ]
-        == "interpolate"
-    )
+    out = CosmicRayRemover(spike_threshold=3.0, spike_width=7).transform(da)
+    assert out.values[0, spike_centre] < 5000.0 / 5
 
 
-def test_cosmic_ray_single_derivative_removes_spike():
-    n = 256
-    spec = np.linspace(0, 1, n, dtype=np.float64) * 20.0 + 50.0
-    spec[100] = 800.0
-    da = xr.DataArray(
-        spec[np.newaxis, :],
-        dims=("t", "eV"),
-        coords={"t": [0], "eV": np.linspace(1.5, 3.0, n)},
-        attrs={"treatments": {}},
-    )
-    out = CosmicRayRemover(
-        kernel_size=5,
-        single_spectrum_method="derivative",
-        threshold=2.5,
-    ).transform(da)
-    assert out.values[0, 100] < spec[100] / 8
-    assert (
-        out.attrs["treatments"]["Cosmic Ray Correction"][
-            "single_spectrum_method"
-        ]
-        == "derivative"
-    )
-
-
-def test_cosmic_ray_single_derivative_smooth_high_threshold():
+def test_cosmic_ray_single_high_threshold_no_change():
+    """Very high threshold: no channels flagged, signal unchanged."""
     n = 300
-    spec = np.asarray(
-        np.sin(np.linspace(0, 2 * np.pi, n)) * 2.0 + 50.0,
-        dtype=np.float64,
-    )
+    # Constant spectrum: medfilt(constant) == constant at every channel
+    # including zero-padded boundary, so residual == 0 and no spikes found.
+    spec = np.full(n, 50.0, dtype=np.float64)
     da = xr.DataArray(
         spec[np.newaxis, :],
         dims=("i", "cm"),
         coords={"i": [0], "cm": np.arange(n, dtype=float)},
         attrs={"treatments": {}},
     )
-    out = CosmicRayRemover(
-        kernel_size=5,
-        single_spectrum_method="derivative",
-        threshold=12.0,
-    ).transform(da)
-    np.testing.assert_allclose(out.values[0], spec, rtol=0, atol=0.08)
+    out = CosmicRayRemover(spike_width=5, spike_threshold=50.0).transform(da)
+    np.testing.assert_array_equal(out.values[0], spec)
 
 
-def test_cosmic_ray_single_invalid_method_raises():
-    with pytest.raises(ValueError, match="single_spectrum_method"):
-        CosmicRayRemover(**{"single_spectrum_method": "pca"})
+def test_cosmic_ray_invalid_map_method_raises():
+    with pytest.raises(ValueError, match="map_method"):
+        CosmicRayRemover(map_method="bad_method")
 
 
 def test_cosmic_ray_map_removes_spike():
@@ -176,7 +143,9 @@ def test_cosmic_ray_map_removes_spike():
         },
         attrs={"treatments": {}},
     )
-    cr = CosmicRayRemover(sensitivity=0.5, width=0.08, disk_radius=2)
+    cr = CosmicRayRemover(
+        map_sensitivity=0.5, map_spike_width=0.08, map_disk_radius=2
+    )
     out = cr.transform(da)
     assert out.values[2, 2, 20] < cube[2, 2, 20] / 5
 
@@ -191,7 +160,7 @@ def test_cosmic_ray_degenerate_map_uses_single_path():
         coords={"Y": [0], "X": [0], "nm": np.arange(n)},
         attrs={"treatments": {}},
     )
-    out = CosmicRayRemover(threshold=2.5, kernel_size=5).transform(da)
+    out = CosmicRayRemover(spike_threshold=2.5, spike_width=5).transform(da)
     assert out.values[0, 0, 30] < 100.0
 
 

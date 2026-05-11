@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-High-level cosmic-ray removal: :class:`CosmicRayRemover` for maps and singles.
-"""
+"""High-level cosmic-ray removal: :class:`CosmicRayRemover`."""
 
 from __future__ import annotations
 
@@ -12,163 +10,402 @@ import numpy as np
 import xarray as xr
 
 from .preprocessing._common import resolve_spectral_dim, with_new_values
-from .preprocessing.cosmic_ray_1d import (
-    SingleSpectrumMethod,
-    remove_cosmic_rays_1d,
+from .preprocessing.cosmic_ray_1d import remove_cosmic_rays_1d
+from .preprocessing.cosmic_ray_map import (
+    correct_cosmic_rays_collection,
+    correct_cosmic_rays_on_map_cube,
 )
-from .preprocessing.cosmic_ray_map import correct_cosmic_rays_on_map_cube
 from .preprocessing.spectral_harmonic_removal import harmonic_correct_dataarray
 from .wdf.utils import ensure_in_memory
+
+# ---------------------------------------------------------------------------
+# Internal tuning constants (not exposed as user parameters)
+# ---------------------------------------------------------------------------
+
+_MAP_MAD_MULTIPLIER: float = 7.0
+_MAP_NOISY_RELAX_MIN: float = 0.82
+_MAP_SPECTRAL_DILATE_CAP: int = 5
+_MAP_MAX_REPAIR_EXTENT: int = 12
+_MAP_MIN_RESIDUAL_OVER_CUTOFF: float = 1.05
+_MAP_REQUIRE_SPATIAL_LOCAL_MAX: bool = True
+
+# Below this many spectra → apply 1D engine independently per spectrum;
+# at or above → use the collection (global-median / PCA) engine.
+_COLLECTION_THRESHOLD: int = 20
 
 
 @dataclass
 class CosmicRayRemover:
-    """Cosmic-ray removal: spatial median for maps; robust 1D for singles.
+    """Cosmic-ray removal with automatic routing by data dimensionality.
 
-    Optionally removes broad Nd:YAG laser harmonics on ~355 nm excitation
-    before narrow spike removal (:meth:`harmonic_check`, :meth:`remove`).
+    **1D (single spectrum)** — always uses the 1D medfilt + MAD engine
+    controlled by :attr:`spike_width`, :attr:`spike_threshold`,
+    :attr:`spike_passes`.
 
-    **Maps** (3D): spatial disk median on a min/median-normalized cube;
-    **per-λ scaled MAD** cutoffs and noisy-band ``relax_λ``; repair by
-    **spectral interpolation** (not copying the full median surface).
+    **2D (line scan / series / point collection)**
 
-    **Single spectrum** (1D ``(n_spectral,)`` or 2D ``(1, n_spectral)``): see
-    :func:`remove_cosmic_rays_1d` — up to ``max_passes`` iterations of
-    ``scipy.signal.medfilt``-based MAD detection, mask dilation by 1 channel,
-    and linear-interpolation repair from the original signal.
+    * fewer than 20 spectra → 1D engine applied independently to each
+      spectrum (no population statistics yet).
+    * 20 or more spectra → *collection engine*: global median or PCA
+      reconstruction as reference; :attr:`map_method` selects which.
 
-    **Line scan / point collection** (2D ``(n_spatial, n_spectral)``): treated
-    as a 1-column map so that neighbouring spectra along the scan axis inform
-    the spatial median reference.
+    **3D (spatial map)**
+
+    * fewer than 20 spectra → same per-spectrum 1D path as above.
+    * 20 or more → spatial disk-median engine (``map_method="median"``,
+      default) or PCA engine (``map_method="pca"``).  The disk-median path
+      additionally respects :attr:`map_sensitivity` and
+      :attr:`map_disk_radius`.
+
+    Optionally removes broad Nd:YAG harmonics before spike removal via
+    :meth:`harmonic_check` / :meth:`remove`.
 
     Parameters
     ----------
-    sensitivity
-        Map path: scales aggressiveness. The cutoff includes
-        ``(0.01 / sensitivity)`` times the per-channel MAD level (``0.01`` is
-        the legacy default reference). Larger ``sensitivity`` → **more** hits.
-    width
-        Map path: spectral dilation of the CR mask (fraction of length).
-    disk_radius
-        Map path: spatial disk radius for the reference median filter.
-    map_mad_multiplier
-        Map path: multiplier on ``noise_λ × relax_λ`` (like 1D ``threshold``;
-        larger → fewer false positives).
-    map_noisy_channel_relax_min
-        Map path: floor on ``relax_λ`` in noisy channels. **Higher** → weaker
-        boost in noisy bands → fewer false positives.
-    map_spectral_dilate_cap
-        Map path: max footprint length (in spectral channels) when dilating
-        hits along λ. Caps ``width × N`` so repair stays **narrow** and interp
-        stays accurate.
-    map_require_spatial_local_max
-        Map path: if True (default), keep only voxels that are strict maxima in
-        their ``(y, x)`` slice at fixed λ (8-neighbour), reducing extended
-        bright features being treated as CRs.
-    map_max_spectral_repair_extent
-        Map path: after spectral dilation, each contiguous repair segment along
-        λ is clipped to at most this many channels (centered on max residual in
-        the segment). ``None`` disables (not recommended for noisy maps).
-    map_min_residual_over_cutoff
-        Map path: require ``residual > cutoff *`` this factor (> 1 stricter,
-        fewer false positives). Use ``1.0`` for the legacy strict inequality.
-    single_spectrum_method
-        ``\"median\"`` or ``\"interpolate\"`` (both use medfilt detection and
-        linear-interpolation repair — equivalent in practice), or
-        ``\"derivative\"`` (neighbour-difference peak test).
-    kernel_size
-        Odd, ``>= 3``. Passed to ``medfilt`` for single-spectrum median-based
-        methods.
-    threshold
-        Single-spectrum only: spike cutoff is ``threshold * MAD_noise``.
-        Lower → more aggressive (try ``3.5``–``4.0`` for noisy spectra).
-    max_passes
-        Single-spectrum only: number of detection–repair iterations (default
-        3).  Each pass runs on the already-repaired signal so that large spikes
-        no longer mask smaller ones.  ``1`` replicates old single-pass
-        behaviour.
+    spike_width
+        **1D engine** — odd integer ≥ 3.  Sets the ``medfilt`` window in
+        spectral channels.  Raise to 9–13 when cosmic rays span 7–10
+        channels; keep at 5 for narrow single-channel spikes.
+    spike_threshold
+        **1D engine** — positive float.  Spike cutoff = ``spike_threshold ×
+        MAD_noise``.  Lower → more aggressive (try 3.5–4.0 for noisy
+        spectra).
+    spike_passes
+        **1D engine** — integer ≥ 1.  Iterations of detect → repair.  Each
+        pass works on the already-repaired signal so that large spikes no
+        longer mask smaller ones.
+    map_sensitivity
+        **3D disk-median engine only** — scales overall aggressiveness.
+        Larger → more hits (default 0.01).
+    map_disk_radius
+        **3D disk-median engine only** — spatial disk radius for the
+        reference median filter (pixels).
+    map_spike_width
+        **Collection / 3D engines** — fraction of spectrum length used as
+        spectral dilation window for the repair mask (0 < value ≤ 1).
+    map_method
+        ``"median"`` (default): global median spectrum as reference for 2D;
+        spatial disk-median for 3D.
+        ``"pca"``: PCA reconstruction as reference for both 2D and 3D.
+    map_n_components
+        **PCA path only** — number of principal components for the
+        reconstruction reference.  3–5 covers most real samples; increase
+        for multi-phase or compositionally diverse maps.
     spectral_dim
-        Name of the spectral axis (default: last dimension). Used for harmonic
-        cleanup and when the spectral dimension is not last.
+        Name of the spectral axis (default: last dimension).
     """
 
-    sensitivity: float = 0.01
-    width: float = 0.02
-    disk_radius: int = 3
-    single_spectrum_method: SingleSpectrumMethod = "median"
-    kernel_size: int = 5
-    threshold: float = 5.0
-    max_passes: int = 3
+    # --- 1D engine ---
+    spike_width: int = 5
+    spike_threshold: float = 5.0
+    spike_passes: int = 3
+
+    # --- collection / 3D engine ---
+    map_sensitivity: float = 0.01
+    map_disk_radius: int = 3
+    map_spike_width: float = 0.02
+    map_method: str = "median"
+    map_n_components: int = 3
+
+    # --- shared ---
     spectral_dim: str | None = None
-    map_mad_multiplier: float = 7.0
-    map_noisy_channel_relax_min: float = 0.82
-    map_spectral_dilate_cap: int = 5
-    map_max_spectral_repair_extent: int | None = 12
-    map_min_residual_over_cutoff: float = 1.05
-    map_require_spatial_local_max: bool = True
 
     def __post_init__(self) -> None:
-        allowed: tuple[str, ...] = ("median", "interpolate", "derivative")
-        if self.single_spectrum_method not in allowed:
+        if self.spike_width < 3 or self.spike_width % 2 == 0:
             raise ValueError(
-                f"single_spectrum_method must be one of {allowed!r}, got "
-                f"{self.single_spectrum_method!r}"
+                f"spike_width must be odd and >= 3, got {self.spike_width}"
             )
-        if self.kernel_size < 3 or self.kernel_size % 2 == 0:
+        if self.spike_threshold <= 0 or not np.isfinite(self.spike_threshold):
+            raise ValueError("spike_threshold must be positive and finite")
+        if self.spike_passes < 1:
+            raise ValueError("spike_passes must be >= 1")
+        if self.map_sensitivity <= 0:
+            raise ValueError("map_sensitivity must be > 0")
+        if not 0 < self.map_spike_width <= 1:
+            raise ValueError("map_spike_width must be in (0, 1]")
+        if self.map_disk_radius < 1:
+            raise ValueError("map_disk_radius must be >= 1")
+        if self.map_method not in ("median", "pca"):
             raise ValueError(
-                f"kernel_size must be odd and >= 3, got {self.kernel_size}"
+                f"map_method must be 'median' or 'pca', "
+                f"got {self.map_method!r}"
             )
-        if self.threshold <= 0 or not np.isfinite(self.threshold):
-            raise ValueError("threshold must be positive and finite")
-        if self.max_passes < 1:
-            raise ValueError("max_passes must be >= 1")
-        if self.sensitivity <= 0:
-            raise ValueError("sensitivity must be > 0")
-        if not 0 < self.width <= 1:
-            raise ValueError("width must be in (0, 1]")
-        if self.map_mad_multiplier <= 0 or not np.isfinite(
-            self.map_mad_multiplier
-        ):
-            raise ValueError("map_mad_multiplier must be positive and finite")
-        if not 0 < self.map_noisy_channel_relax_min <= 1:
-            raise ValueError("map_noisy_channel_relax_min must be in (0, 1]")
-        if self.map_spectral_dilate_cap < 1:
-            raise ValueError("map_spectral_dilate_cap must be >= 1")
-        if self.map_max_spectral_repair_extent is not None and (
-            self.map_max_spectral_repair_extent < 1
-        ):
-            raise ValueError(
-                "map_max_spectral_repair_extent must be >= 1 or None"
-            )
-        if self.map_min_residual_over_cutoff <= 0 or not np.isfinite(
-            self.map_min_residual_over_cutoff
-        ):
-            raise ValueError(
-                "map_min_residual_over_cutoff must be positive and finite"
-            )
+        if self.map_n_components < 1:
+            raise ValueError("map_n_components must be >= 1")
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def harmonic_check(self, spectrum: xr.DataArray) -> xr.DataArray:
         """Notch broad harmonics when ``LaserWaveLength`` is ~355 nm
         (Nd:YAG).
 
-        If ``spectrum.attrs['LaserWaveLength']`` is outside 354–356 nm, returns
-        ``spectrum`` unchanged.
+        If ``spectrum.attrs['LaserWaveLength']`` is outside 354–356 nm,
+        returns ``spectrum`` unchanged.
 
-        Searches 1064 / 532 / 355 / 266 nm (±2.5 nm); replaces ~1 nm around
-        each found peak with linear interpolation. Prints one line per removal.
+        Searches 1064 / 532 / 355 / 266 nm (±2.5 nm); replaces ~1 nm
+        around each found peak with linear interpolation.
         """
         return harmonic_correct_dataarray(
             spectrum,
             spectral_dim=self.spectral_dim,
         )
 
+    def remove_cosmic_rays(self, spectrum: xr.DataArray) -> xr.DataArray:
+        """Spike removal only (no harmonic notch)."""
+        out, _ = self._route(spectrum, want_diagnostics=False)
+        return out
+
+    def remove_cosmic_rays_with_diagnostics(
+        self,
+        spectrum: xr.DataArray,
+    ) -> tuple[xr.DataArray, dict[str, Any]]:
+        """Like :meth:`remove_cosmic_rays`, but also returns a diagnostics
+        dict for visualization / QC (not written to ``DataArray.attrs``).
+
+        Diagnostics keys depend on the engine used:
+
+        * **1D**: ``"cosmic_mask"``, ``"corrected_1d"``
+        * **loop-1D** (< 20 spectra, 2D/3D): ``"cosmic_masks"``
+        * **collection** (≥ 20 spectra, 2D or 3D PCA): ``"core_mask"``,
+          ``"repair_mask"``, ``"residual"``, ``"reference"``,
+          ``"noise_per_channel"``, ``"cutoff"``
+        * **3D disk-median**: same as current map diagnostics
+          (``"core_mask"``, ``"repair_mask"``, ``"residual"``,
+          ``"preprocessed"``, ``"spatial_median_reference"``, etc.)
+        """
+        return self._route(spectrum, want_diagnostics=True)
+
+    def remove(self, spectrum: xr.DataArray) -> xr.DataArray:
+        """Harmonic cleanup first, then cosmic-ray removal."""
+        return self.remove_cosmic_rays(self.harmonic_check(spectrum))
+
+    def remove_with_diagnostics(
+        self,
+        spectrum: xr.DataArray,
+    ) -> tuple[xr.DataArray, dict[str, Any]]:
+        """Harmonics, then :meth:`remove_cosmic_rays_with_diagnostics`."""
+        return self.remove_cosmic_rays_with_diagnostics(
+            self.harmonic_check(spectrum)
+        )
+
+    def transform(self, spectrum: xr.DataArray) -> xr.DataArray:
+        """Alias of :meth:`remove` (harmonics then cosmic rays)."""
+        return self.remove(spectrum)
+
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Routing
     # ------------------------------------------------------------------
+
+    def _route(
+        self,
+        da: xr.DataArray,
+        *,
+        want_diagnostics: bool,
+    ) -> tuple[xr.DataArray, dict[str, Any]]:
+        """Dispatch to the correct engine based on shape and spectrum count."""
+        ndim = da.ndim
+
+        if ndim == 1:
+            resolve_spectral_dim(da, self.spectral_dim)
+            return self._apply_1d(da, np.asarray(da.values, dtype=float))
+
+        if ndim == 2:
+            n_spectra = da.shape[0]
+            if n_spectra <= 1:
+                return self._apply_1d(
+                    da,
+                    np.asarray(da.values, dtype=float).reshape(-1),
+                    want_diagnostics=want_diagnostics,
+                )
+            if n_spectra < _COLLECTION_THRESHOLD:
+                return self._apply_loop_1d(
+                    da, want_diagnostics=want_diagnostics
+                )
+            return self._apply_collection(
+                da, want_diagnostics=want_diagnostics
+            )
+
+        if ndim == 3:
+            n_spectra = da.shape[0] * da.shape[1]
+            if n_spectra < _COLLECTION_THRESHOLD:
+                return self._apply_loop_1d(
+                    da, want_diagnostics=want_diagnostics
+                )
+            da = self._maybe_compute_for_map(da)
+            return self._apply_map(da, want_diagnostics=want_diagnostics)
+
+        raise ValueError(
+            "CosmicRayRemover supports 1-D (n_spectral,), "
+            "2-D (n_spatial, n_spectral), or 3-D (ny, nx, n_spectral); "
+            f"got ndim={da.ndim}, shape={da.shape}"
+        )
+
+    # ------------------------------------------------------------------
+    # Engines
+    # ------------------------------------------------------------------
+
+    def _apply_1d(
+        self,
+        da: xr.DataArray,
+        arr_1d: np.ndarray,
+        *,
+        want_diagnostics: bool = True,
+    ) -> tuple[xr.DataArray, dict[str, Any]]:
+        resolve_spectral_dim(da, self.spectral_dim)
+        corrected, mask = remove_cosmic_rays_1d(
+            arr_1d,
+            kernel_size=self.spike_width,
+            threshold=self.spike_threshold,
+            max_passes=self.spike_passes,
+        )
+        meta = self._meta_1d(mask)
+        out = with_new_values(
+            da, corrected.reshape(da.shape), "Cosmic Ray Correction", meta
+        )
+        diag = (
+            {"cosmic_mask": mask, "corrected_1d": corrected}
+            if want_diagnostics
+            else {}
+        )
+        return out, diag
+
+    def _apply_loop_1d(
+        self,
+        da: xr.DataArray,
+        *,
+        want_diagnostics: bool,
+    ) -> tuple[xr.DataArray, dict[str, Any]]:
+        """Apply the 1D engine independently to every spectrum."""
+        arr = np.asarray(da.values, dtype=float)
+        orig_shape = arr.shape
+        flat = arr.reshape(-1, orig_shape[-1])
+        out_flat = flat.copy()
+        masks = np.zeros_like(flat, dtype=bool) if want_diagnostics else None
+        n_corrected = 0
+        for i, row in enumerate(flat):
+            corrected, mask = remove_cosmic_rays_1d(
+                row,
+                kernel_size=self.spike_width,
+                threshold=self.spike_threshold,
+                max_passes=self.spike_passes,
+            )
+            out_flat[i] = corrected
+            if np.any(mask):
+                n_corrected += 1
+            if masks is not None:
+                masks[i] = mask
+        meta = {
+            "spike_width": self.spike_width,
+            "spike_threshold": self.spike_threshold,
+            "spike_passes": self.spike_passes,
+            "spectra_corrected": n_corrected,
+        }
+        out = with_new_values(
+            da, out_flat.reshape(orig_shape), "Cosmic Ray Correction", meta
+        )
+        if want_diagnostics and masks is not None:
+            diag: dict[str, Any] = {"cosmic_masks": masks.reshape(orig_shape)}
+        else:
+            diag = {}
+        return out, diag
+
+    def _apply_collection(
+        self,
+        da: xr.DataArray,
+        *,
+        want_diagnostics: bool,
+    ) -> tuple[xr.DataArray, dict[str, Any]]:
+        """Global-median or PCA engine for 2D with ≥ 20 spectra."""
+        result = correct_cosmic_rays_collection(
+            np.asarray(da.values, dtype=float),
+            method=self.map_method,
+            threshold=self.spike_threshold,
+            spectral_width_fraction=self.map_spike_width,
+            spectral_dilate_cap=_MAP_SPECTRAL_DILATE_CAP,
+            max_repair_extent=_MAP_MAX_REPAIR_EXTENT,
+            n_components=self.map_n_components,
+            return_diagnostics=want_diagnostics,
+        )
+        if want_diagnostics:
+            corrected, meta, diag = result  # type: ignore[misc]
+        else:
+            corrected, meta = result  # type: ignore[misc]
+            diag = {}
+        return (
+            with_new_values(da, corrected, "Cosmic Ray Correction", meta),
+            diag,
+        )
+
+    def _apply_map(
+        self,
+        da: xr.DataArray,
+        *,
+        want_diagnostics: bool,
+    ) -> tuple[xr.DataArray, dict[str, Any]]:
+        """Spatial disk-median or PCA engine for 3D maps with ≥ 20 spectra."""
+        if self.map_method == "pca":
+            result = correct_cosmic_rays_collection(
+                np.asarray(da.values, dtype=float),
+                method="pca",
+                threshold=self.spike_threshold,
+                spectral_width_fraction=self.map_spike_width,
+                spectral_dilate_cap=_MAP_SPECTRAL_DILATE_CAP,
+                max_repair_extent=_MAP_MAX_REPAIR_EXTENT,
+                n_components=self.map_n_components,
+                return_diagnostics=want_diagnostics,
+            )
+            if want_diagnostics:
+                corrected, meta, diag = result  # type: ignore[misc]
+            else:
+                corrected, meta = result  # type: ignore[misc]
+                diag = {}
+            return (
+                with_new_values(da, corrected, "Cosmic Ray Correction", meta),
+                diag,
+            )
+
+        # Default: spatial disk-median
+        result_map = correct_cosmic_rays_on_map_cube(
+            da.values,
+            sensitivity=self.map_sensitivity,
+            spectral_width_fraction=self.map_spike_width,
+            disk_radius=self.map_disk_radius,
+            map_mad_multiplier=_MAP_MAD_MULTIPLIER,
+            map_noisy_channel_relax_min=_MAP_NOISY_RELAX_MIN,
+            map_spectral_dilate_cap=_MAP_SPECTRAL_DILATE_CAP,
+            map_max_spectral_repair_extent=_MAP_MAX_REPAIR_EXTENT,
+            map_min_residual_over_cutoff=_MAP_MIN_RESIDUAL_OVER_CUTOFF,
+            map_require_spatial_local_max=_MAP_REQUIRE_SPATIAL_LOCAL_MAX,
+            return_diagnostic_masks=want_diagnostics,
+        )
+        if want_diagnostics:
+            corrected_m, meta_m, diag_m = result_map  # type: ignore[misc]
+        else:
+            corrected_m, meta_m = result_map  # type: ignore[misc]
+            diag_m = {}
+        return (
+            with_new_values(da, corrected_m, "Cosmic Ray Correction", meta_m),
+            diag_m,
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _meta_1d(self, mask: np.ndarray) -> dict[str, Any]:
+        meta: dict[str, Any] = {
+            "spike_width": self.spike_width,
+            "spike_threshold": self.spike_threshold,
+            "spike_passes": self.spike_passes,
+        }
+        if np.any(mask):
+            meta["CRs found (spectral indices)"] = list(np.flatnonzero(mask))
+        return meta
 
     @staticmethod
     def _da_label(da: xr.DataArray) -> str:
-        """Short human-readable identifier for error messages."""
         parts: list[str] = []
         if da.name:
             parts.append(f"name={da.name!r}")
@@ -179,10 +416,9 @@ class CosmicRayRemover:
         return ", ".join(parts) if parts else "unnamed DataArray"
 
     @staticmethod
-    def _maybe_compute_for_map(spectrum: xr.DataArray) -> xr.DataArray:
-        """If ``spectrum`` is Dask-backed, load it into RAM now and warn."""
+    def _maybe_compute_for_map(da: xr.DataArray) -> xr.DataArray:
         return ensure_in_memory(
-            spectrum,
+            da,
             caller="CosmicRayRemover",
             reason=(
                 "The spatial disk-median algorithm requires all pixels in "
@@ -193,223 +429,5 @@ class CosmicRayRemover:
             stacklevel=3,
         )
 
-    def _build_cr_meta_1d(self, mask: np.ndarray) -> dict[str, Any]:
-        """Build the metadata dict for a 1D cosmic-ray correction."""
-        meta: dict[str, Any] = {
-            "single_spectrum_method": self.single_spectrum_method,
-            "kernel_size": self.kernel_size,
-            "threshold": self.threshold,
-            "max_passes": self.max_passes,
-        }
-        if np.any(mask):
-            meta["CRs found (spectral indices)"] = list(np.flatnonzero(mask))
-        return meta
 
-    def remove_cosmic_rays(self, spectrum: xr.DataArray) -> xr.DataArray:
-        """Spike removal only (no harmonic notch)."""
-        if spectrum.ndim == 1:
-            return self._single_spectrum_output(spectrum, spectrum.values)
-        # Treat a 2-D line scan (n_spatial, n_spectral) as a one-row map.
-        if spectrum.ndim == 2 and spectrum.shape[0] > 1:
-            tmp = spectrum.expand_dims(dim="__x__", axis=1)
-            out = self.remove_cosmic_rays(tmp)
-            return out.squeeze("__x__", drop=True)
-        if spectrum.ndim == 3:
-            ny, nx = spectrum.shape[0], spectrum.shape[1]
-            if ny * nx <= 1:
-                return self._single_spectrum_output(
-                    spectrum,
-                    spectrum.values.reshape(-1),
-                )
-            spectrum = self._maybe_compute_for_map(spectrum)
-            corrected, meta = correct_cosmic_rays_on_map_cube(
-                spectrum.values,
-                sensitivity=self.sensitivity,
-                spectral_width_fraction=self.width,
-                disk_radius=self.disk_radius,
-                map_mad_multiplier=self.map_mad_multiplier,
-                map_noisy_channel_relax_min=self.map_noisy_channel_relax_min,
-                map_spectral_dilate_cap=self.map_spectral_dilate_cap,
-                map_max_spectral_repair_extent=(
-                    self.map_max_spectral_repair_extent
-                ),
-                map_min_residual_over_cutoff=(
-                    self.map_min_residual_over_cutoff
-                ),
-                map_require_spatial_local_max=(
-                    self.map_require_spatial_local_max
-                ),
-            )
-            return with_new_values(
-                spectrum,
-                corrected,
-                "Cosmic Ray Correction",
-                meta,
-            )
-        if spectrum.ndim == 2 and spectrum.shape[0] == 1:
-            return self._single_spectrum_output(spectrum, spectrum.values[0])
-        raise ValueError(
-            "CosmicRayRemover supports: 1-D single spectrum (n_spectral,), "
-            "2-D line scan / point collection (n_spatial, n_spectral), or "
-            "3-D map (ny, nx, n_spectral); got "
-            f"ndim={spectrum.ndim}, shape={spectrum.shape} "
-            f"[{self._da_label(spectrum)}]"
-        )
-
-    def remove_cosmic_rays_with_diagnostics(
-        self,
-        spectrum: xr.DataArray,
-    ) -> tuple[xr.DataArray, dict[str, Any]]:
-        """Like :meth:`remove_cosmic_rays`, but returns a
-        **diagnostics** dict for visualization / QC (not written to
-        ``DataArray.attrs``).
-
-        For 3D maps, ``diagnostics`` includes boolean ``core_mask``,
-        ``repair_mask``, and float arrays ``residual``, ``preprocessed``,
-        ``spatial_median_reference``, ``cutoff``, ``per_spectrum_median``, etc.
-        Use matplotlib to overlay masks or compare spectra at selected
-        ``(y, x)``.
-
-        For 2D single-spectrum input, diagnostics contain ``cosmic_mask`` and
-        ``corrected_1d`` (the 1D corrected intensity).
-        """
-        if spectrum.ndim == 1:
-            resolve_spectral_dim(spectrum, self.spectral_dim)
-            corrected, mask = remove_cosmic_rays_1d(
-                spectrum.values,
-                self.single_spectrum_method,
-                kernel_size=self.kernel_size,
-                threshold=self.threshold,
-                max_passes=self.max_passes,
-            )
-            meta_1d = self._build_cr_meta_1d(mask)
-            out = with_new_values(
-                spectrum, corrected, "Cosmic Ray Correction", meta_1d
-            )
-            return out, {"cosmic_mask": mask, "corrected_1d": corrected}
-        # Treat a 2-D line scan (n_spatial, n_spectral) as a one-row map.
-        if spectrum.ndim == 2 and spectrum.shape[0] > 1:
-            tmp = spectrum.expand_dims(dim="__x__", axis=1)
-            out, diag = self.remove_cosmic_rays_with_diagnostics(tmp)
-            return out.squeeze("__x__", drop=True), diag
-        if spectrum.ndim == 3:
-            ny, nx = spectrum.shape[0], spectrum.shape[1]
-            if ny * nx <= 1:
-                resolve_spectral_dim(spectrum, self.spectral_dim)
-                sp = ensure_in_memory(
-                    spectrum,
-                    caller="CosmicRayRemover",
-                    reason=(
-                        "Single-spectrum 1D removal requires a NumPy array."
-                    ),
-                    stacklevel=3,
-                ).values.reshape(-1)
-                corrected, mask = remove_cosmic_rays_1d(
-                    sp,
-                    self.single_spectrum_method,
-                    kernel_size=self.kernel_size,
-                    threshold=self.threshold,
-                    max_passes=self.max_passes,
-                )
-                meta_1d = self._build_cr_meta_1d(mask)
-                out = with_new_values(
-                    spectrum,
-                    corrected.reshape(spectrum.shape),
-                    "Cosmic Ray Correction",
-                    meta_1d,
-                )
-                return out, {"cosmic_mask": mask}
-            spectrum = self._maybe_compute_for_map(spectrum)
-            corrected, meta, diag = correct_cosmic_rays_on_map_cube(
-                spectrum.values,
-                sensitivity=self.sensitivity,
-                spectral_width_fraction=self.width,
-                disk_radius=self.disk_radius,
-                map_mad_multiplier=self.map_mad_multiplier,
-                map_noisy_channel_relax_min=self.map_noisy_channel_relax_min,
-                map_spectral_dilate_cap=self.map_spectral_dilate_cap,
-                map_max_spectral_repair_extent=(
-                    self.map_max_spectral_repair_extent
-                ),
-                map_min_residual_over_cutoff=(
-                    self.map_min_residual_over_cutoff
-                ),
-                map_require_spatial_local_max=(
-                    self.map_require_spatial_local_max
-                ),
-                return_diagnostic_masks=True,
-            )
-            out = with_new_values(
-                spectrum,
-                corrected,
-                "Cosmic Ray Correction",
-                meta,
-            )
-            return out, diag
-        if spectrum.ndim == 2 and spectrum.shape[0] == 1:
-            resolve_spectral_dim(spectrum, self.spectral_dim)
-            sp = spectrum.values[0]
-            corrected, mask = remove_cosmic_rays_1d(
-                sp,
-                self.single_spectrum_method,
-                kernel_size=self.kernel_size,
-                threshold=self.threshold,
-                max_passes=self.max_passes,
-            )
-            meta_1d = self._build_cr_meta_1d(mask)
-            out = with_new_values(
-                spectrum,
-                corrected.reshape(spectrum.shape),
-                "Cosmic Ray Correction",
-                meta_1d,
-            )
-            return out, {"cosmic_mask": mask, "corrected_1d": corrected}
-        raise ValueError(
-            "CosmicRayRemover supports: 1-D single spectrum (n_spectral,), "
-            "2-D line scan / point collection (n_spatial, n_spectral), or "
-            "3-D map (ny, nx, n_spectral); got "
-            f"ndim={spectrum.ndim}, shape={spectrum.shape} "
-            f"[{self._da_label(spectrum)}]"
-        )
-
-    def remove(self, spectrum: xr.DataArray) -> xr.DataArray:
-        """Harmonic cleanup first, then cosmic-ray removal."""
-        spectrum = self.harmonic_check(spectrum)
-        return self.remove_cosmic_rays(spectrum)
-
-    def remove_with_diagnostics(
-        self,
-        spectrum: xr.DataArray,
-    ) -> tuple[xr.DataArray, dict[str, Any]]:
-        """Harmonics, then
-        :meth:`remove_cosmic_rays_with_diagnostics`."""
-        after_h = self.harmonic_check(spectrum)
-        return self.remove_cosmic_rays_with_diagnostics(after_h)
-
-    def transform(self, spectrum: xr.DataArray) -> xr.DataArray:
-        """Alias of :meth:`remove` (harmonics then cosmic rays)."""
-        return self.remove(spectrum)
-
-    def _single_spectrum_output(
-        self,
-        da_template: xr.DataArray,
-        spectrum_1d: np.ndarray,
-    ) -> xr.DataArray:
-        """1D robust spike removal without global intensity rescaling."""
-        resolve_spectral_dim(da_template, self.spectral_dim)
-        corrected, mask = remove_cosmic_rays_1d(
-            spectrum_1d,
-            self.single_spectrum_method,
-            kernel_size=self.kernel_size,
-            threshold=self.threshold,
-            max_passes=self.max_passes,
-        )
-        return with_new_values(
-            da_template,
-            corrected.reshape(da_template.shape),
-            "Cosmic Ray Correction",
-            self._build_cr_meta_1d(mask),
-        )
-
-
-__all__ = ["CosmicRayRemover", "SingleSpectrumMethod", "remove_cosmic_rays_1d"]
+__all__ = ["CosmicRayRemover", "remove_cosmic_rays_1d"]
