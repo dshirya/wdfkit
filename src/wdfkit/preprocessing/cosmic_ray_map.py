@@ -308,9 +308,132 @@ def correct_cosmic_rays_on_map_cube(
     return corrected_physical_units, meta, diag
 
 
+def correct_cosmic_rays_collection(
+    values: np.ndarray,
+    *,
+    method: str = "median",
+    threshold: float = 5.0,
+    spectral_width_fraction: float = 0.02,
+    spectral_dilate_cap: int = 5,
+    max_repair_extent: int | None = 12,
+    n_components: int = 3,
+    return_diagnostics: bool = False,
+) -> (
+    tuple[np.ndarray, dict[str, Any]]
+    | tuple[np.ndarray, dict[str, Any], dict[str, Any]]
+):
+    """Global-median or PCA-reference cosmic-ray removal for collections.
+
+    Works on any shape ``(..., n_channels)``: spatial dims are flattened
+    internally; detection and repair run on the flat
+    ``(n_spectra, n_channels)`` view, then the result is reshaped back.
+
+    Unlike :func:`correct_cosmic_rays_on_map_cube`, this function requires no
+    spatial neighbourhood — it is suitable for 2-D line/series/point arrays
+    and for 3-D maps when ``map_method="pca"`` is selected.
+
+    Parameters
+    ----------
+    values
+        Input array of shape ``(..., n_channels)``.
+    method
+        ``"median"``: global median spectrum across all positions used as
+        reference — same reference for every spectrum.
+        ``"pca"``: per-spectrum PCA reconstruction used as reference (captures
+        smooth spatial/temporal variation; cosmic rays appear in the residual).
+    threshold
+        Positive residual cutoff in units of per-channel MAD noise.
+    n_components
+        PCA only: number of principal components for reconstruction.
+        Typically 3–5; increase for samples with many distinct spectral shapes.
+    """
+    orig_shape = np.asarray(values).shape
+    n_channels = orig_shape[-1]
+    flat = np.asarray(values, dtype=float).reshape(-1, n_channels)
+    n_spectra = flat.shape[0]
+
+    # Build reference array (n_spectra, n_channels)
+    if method == "median":
+        ref = np.tile(np.median(flat, axis=0), (n_spectra, 1))
+    elif method == "pca":
+        mean = flat.mean(axis=0)
+        centered = flat - mean
+        k = min(n_components, n_spectra - 1, n_channels - 1)
+        U, S, Vt = np.linalg.svd(centered, full_matrices=False)
+        ref = (U[:, :k] * S[np.newaxis, :k]) @ Vt[:k, :] + mean
+    else:
+        raise ValueError(f"method must be 'median' or 'pca', got {method!r}")
+
+    residual = flat - ref  # (n_spectra, n_channels)
+
+    # Per-channel MAD noise estimate across all spectra
+    noise_ch = np.empty(n_channels)
+    for ch in range(n_channels):
+        col = residual[:, ch]
+        amp = float(np.nanmax(np.abs(flat[:, ch]))) + np.finfo(float).tiny
+        noise_ch[ch] = robust_mad_noise_with_floor(col, amp)
+
+    cutoff = threshold * noise_ch  # (n_channels,)
+    core_mask_flat = (
+        residual > cutoff[np.newaxis, :]
+    )  # (n_spectra, n_channels)
+
+    # Reshape to pseudo-3D (n_spectra, 1, n_channels) to reuse existing
+    # spectral dilation and extent-limiting helpers
+    core_mask_3d = core_mask_flat.reshape(n_spectra, 1, n_channels)
+    residual_3d = residual.reshape(n_spectra, 1, n_channels)
+
+    dil_len = _spectral_dilation_footprint_length(
+        n_channels, spectral_width_fraction, spectral_dilate_cap
+    )
+    dilated_3d = _dilate_mask_along_spectral_axis(core_mask_3d, dil_len)
+    if max_repair_extent is not None:
+        dilated_3d = _limit_mask_runs_along_spectral_axis(
+            dilated_3d, residual_3d, int(max_repair_extent)
+        )
+    dilated_flat = dilated_3d.reshape(n_spectra, n_channels)
+
+    # Repair masked channels by spectral interpolation from the reference
+    corrected = flat.copy()
+    for r in range(n_spectra):
+        m = dilated_flat[r]
+        if np.any(m):
+            filled = linear_interpolate_masked_channels_1d(ref[r], m)
+            corrected[r] = np.where(m, filled, flat[r])
+
+    bad_rows = list(map(int, np.unique(np.argwhere(core_mask_flat)[:, 0])))
+
+    meta: dict[str, Any] = {
+        "collection_detection": method,
+        "spike_threshold": threshold,
+        "collection_dilate_used": dil_len,
+    }
+    if method == "pca":
+        meta["map_n_components"] = k  # type: ignore[possibly-undefined]
+    if bad_rows:
+        meta["CRs found (spectrum indices)"] = bad_rows
+
+    corrected_out = corrected.reshape(orig_shape)
+
+    if not return_diagnostics:
+        return corrected_out, meta
+
+    spatial_shape = orig_shape[:-1]
+    diag: dict[str, Any] = {
+        "core_mask": core_mask_flat.reshape(spatial_shape + (n_channels,)),
+        "repair_mask": dilated_flat.reshape(spatial_shape + (n_channels,)),
+        "residual": residual.reshape(orig_shape),
+        "reference": ref.reshape(orig_shape),
+        "noise_per_channel": noise_ch,
+        "cutoff": cutoff,
+    }
+    return corrected_out, meta, diag
+
+
 __all__ = [
     "min_subtract_median_normalize_map_cube",
     "correct_cosmic_rays_on_map_cube",
+    "correct_cosmic_rays_collection",
     "interpolate_cosmic_ray_regions_spectrally",
     "unique_spatial_indices_from_nonzero",
 ]

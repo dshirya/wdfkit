@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 import numpy as np
 from scipy.signal import medfilt
 
@@ -13,27 +11,15 @@ from .cosmic_ray_mad import (
     robust_mad_noise_with_floor,
 )
 
-SingleSpectrumMethod = Literal["median", "interpolate", "derivative"]
 
-
-def _coerce_float_1d_spectrum(
-    y: np.ndarray,
-    method: str,
-    kernel_size: int,
-) -> np.ndarray:
-    """Cast ``y`` to float 1D; validate inputs.
-
-    Ensures ``method`` is allowed and ``kernel_size`` is odd and ≥ 3.
-    """
+def _coerce_float_1d_spectrum(y: np.ndarray, kernel_size: int) -> np.ndarray:
+    """Cast ``y`` to float 1D; validate ``kernel_size`` is odd and ≥ 3."""
     arr = np.asarray(y, dtype=float)
     if arr.ndim != 1:
         raise ValueError(f"y must be 1D, got shape {arr.shape}")
-    allowed = ("median", "interpolate", "derivative")
-    if method not in allowed:
-        raise ValueError(f"method must be one of {allowed!r}, got {method!r}")
     if kernel_size < 3 or kernel_size % 2 == 0:
         raise ValueError(
-            f"kernel_size must be odd and >= 3, got {kernel_size}"
+            f"spike_width must be odd and >= 3, got {kernel_size}"
         )
     return arr
 
@@ -124,16 +110,15 @@ def linear_interpolate_masked_channels_1d(
 
 def remove_cosmic_rays_1d(
     y: np.ndarray,
-    method: SingleSpectrumMethod,
     *,
     kernel_size: int = 5,
     threshold: float = 5.0,
     max_passes: int = 3,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Remove sharp positive spikes from one 1D spectrum (PL-style).
+    """Remove sharp positive spikes from one 1D spectrum.
 
+    Uses a ``scipy.signal.medfilt`` reference and MAD-based noise estimation.
     Operates on the raw counts / intensity array (only masked indices change).
-    Cosmic rays: **positive** excursions vs a robust noise model.
 
     The algorithm runs up to ``max_passes`` iterations.  Each pass:
 
@@ -150,31 +135,22 @@ def remove_cosmic_rays_1d(
     ----------
     y
         One spectral trace (any numeric dtype; cast to float).
-    method
-        ``\"median\"`` or ``\"interpolate\"`` — ``scipy.signal.medfilt``
-        reference signal, MAD on residual for detection (both methods now
-        repair identically via linear interpolation).
-        ``\"derivative\"`` — neighbour-difference test on ``diff(y)`` MAD;
-        interior points only.
     kernel_size
-        Odd length ``>= 3`` for ``medfilt`` (median / interpolate methods).
+        Odd length ``>= 3`` for ``medfilt``.  Increase for broader spikes
+        (e.g. ``9``–``13`` for 7–10 channel-wide cosmic rays).
     threshold
         Multiplier on MAD-derived noise (larger → fewer detections).
     max_passes
-        Maximum number of detection–repair iterations (default 3).  Use
-        ``1`` for the old single-pass behaviour.
+        Maximum number of detection–repair iterations (default 3).
 
     Returns
     -------
     corrected_y
-        Same shape as ``y``; unchanged if no spikes are found or if noise is
-        degenerate.
+        Same shape as ``y``; unchanged if no spikes found or noise degenerate.
     cosmic_mask
-        Boolean mask, same shape as ``y``; ``True`` at all channels that were
-        corrected (including dilation neighbours).  All ``False`` when nothing
-        was found or when the mask would cover the entire spectrum.
+        Boolean mask, same shape as ``y``; ``True`` at all corrected channels.
     """
-    y1 = _coerce_float_1d_spectrum(y, method, kernel_size)
+    y1 = _coerce_float_1d_spectrum(y, kernel_size)
     n = y1.size
     if threshold <= 0 or not np.isfinite(threshold):
         raise ValueError("threshold must be positive and finite")
@@ -185,15 +161,10 @@ def remove_cosmic_rays_1d(
     current = y1.copy()
 
     for _ in range(max_passes):
-        if method in ("median", "interpolate"):
-            median_filtered = medfilt(current, kernel_size=kernel_size)
-            new_mask, _ = positive_spike_mask_vs_median_smooth(
-                current, median_filtered, threshold
-            )
-        else:  # derivative
-            new_mask = positive_spike_mask_from_derivative_peaks(
-                current, threshold
-            )
+        median_filtered = medfilt(current, kernel_size=kernel_size)
+        new_mask, _ = positive_spike_mask_vs_median_smooth(
+            current, median_filtered, threshold
+        )
 
         if not np.any(new_mask):
             break
@@ -202,11 +173,8 @@ def remove_cosmic_rays_1d(
         cumulative_mask |= new_mask
 
         if np.all(cumulative_mask):
-            # Every channel is masked — cannot interpolate; bail out cleanly.
             return y1.copy(), np.zeros(n, dtype=bool)
 
-        # Always repair with linear interp from the *original* signal so that
-        # each pass detects against a clean baseline.
         current = linear_interpolate_masked_channels_1d(y1, cumulative_mask)
 
     return current, cumulative_mask

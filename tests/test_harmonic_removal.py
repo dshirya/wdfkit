@@ -101,7 +101,7 @@ def test_remove_runs_harmonic_then_cosmic_ray():
         coords={"Time": [0.0], "nm": np.linspace(400, 600, n)},
         attrs={"treatments": {}, "LaserWaveLength": 400.0},
     )
-    out = CosmicRayRemover(threshold=3.0, kernel_size=5).remove(da)
+    out = CosmicRayRemover(spike_threshold=3.0, spike_width=5).remove(da)
     assert out.values[0, 50] < da.values[0, 50] / 10
 
 
@@ -115,5 +115,7 @@ def test_remove_cosmic_rays_skips_harmonic_when_no_laser_metadata():
         coords={"Time": [0.0], "nm": np.arange(n, dtype=float)},
         attrs={"treatments": {}},
     )
-    out = CosmicRayRemover(threshold=3.0, kernel_size=5).remove_cosmic_rays(da)
+    out = CosmicRayRemover(
+        spike_threshold=3.0, spike_width=5
+    ).remove_cosmic_rays(da)
     assert out.values[0, 50] < da.values[0, 50] / 10
