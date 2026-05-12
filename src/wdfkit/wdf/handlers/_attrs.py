@@ -56,6 +56,11 @@ def make_attrs(parsed: "ParsedWDF", kind: str) -> dict:
                 "z": float(ic[2]),
             }
 
+    # For scan types without a WMAP block (series, line_xy, points),
+    # fall back to the WXIS stage position.
+    if not attrs.get("InitialCoordinates"):
+        attrs["InitialCoordinates"] = parsed.stage_xyz
+
     # --- genuinely new attrs (no existing equivalent in params) ---
     attrs["kind"] = kind
     attrs["spectral_units"] = parsed.xlst.units

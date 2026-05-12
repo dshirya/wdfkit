@@ -9,7 +9,10 @@ import numpy as np
 from scipy.ndimage import grey_dilation
 from skimage import filters, morphology
 
-from .cosmic_ray_1d import linear_interpolate_masked_channels_1d
+from .cosmic_ray_1d import (
+    _zero_saturation_mask,
+    linear_interpolate_masked_channels_1d,
+)
 from .cosmic_ray_mad import robust_mad_noise_with_floor
 
 _LEGACY_SENSITIVITY_REFERENCE = 0.01
@@ -332,54 +335,94 @@ def correct_cosmic_rays_collection(
     spatial neighbourhood — it is suitable for 2-D line/series/point arrays
     and for 3-D maps when ``map_method="pca"`` is selected.
 
+    Two detection passes are run.  The second pass recomputes the reference
+    on data cleaned by the first pass, so that CRs no longer contaminate the
+    median or PCA components used for detection.
+
     Parameters
     ----------
     values
         Input array of shape ``(..., n_channels)``.
     method
-        ``"median"``: global median spectrum across all positions used as
-        reference — same reference for every spectrum.
-        ``"pca"``: per-spectrum PCA reconstruction used as reference (captures
-        smooth spatial/temporal variation; cosmic rays appear in the residual).
+        ``"median"``: global median spectrum as reference.
+        ``"pca"``: PCA reconstruction as reference.
     threshold
         Positive residual cutoff in units of per-channel MAD noise.
     n_components
-        PCA only: number of principal components for reconstruction.
-        Typically 3–5; increase for samples with many distinct spectral shapes.
+        PCA only: number of principal components.
+        Increase for maps with many distinct spectral shapes (default 3).
     """
     orig_shape = np.asarray(values).shape
     n_channels = orig_shape[-1]
     flat = np.asarray(values, dtype=float).reshape(-1, n_channels)
     n_spectra = flat.shape[0]
 
-    # Build reference array (n_spectra, n_channels)
-    if method == "median":
-        ref = np.tile(np.median(flat, axis=0), (n_spectra, 1))
-    elif method == "pca":
-        mean = flat.mean(axis=0)
-        centered = flat - mean
-        k = min(n_components, n_spectra - 1, n_channels - 1)
-        U, S, Vt = np.linalg.svd(centered, full_matrices=False)
-        ref = (U[:, :k] * S[np.newaxis, :k]) @ Vt[:k, :] + mean
-    else:
+    if method not in ("median", "pca"):
         raise ValueError(f"method must be 'median' or 'pca', got {method!r}")
 
-    residual = flat - ref  # (n_spectra, n_channels)
+    # Saturated-zero detection (once, on the original signal)
+    zero_mask_flat = np.zeros((n_spectra, n_channels), dtype=bool)
+    for r in range(n_spectra):
+        zero_mask_flat[r] = _zero_saturation_mask(flat[r])
 
-    # Per-channel MAD noise estimate across all spectra
-    noise_ch = np.empty(n_channels)
-    for ch in range(n_channels):
-        col = residual[:, ch]
-        amp = float(np.nanmax(np.abs(flat[:, ch]))) + np.finfo(float).tiny
-        noise_ch[ch] = robust_mad_noise_with_floor(col, amp)
+    # ------------------------------------------------------------------
+    # Helpers (defined here to close over flat / n_channels)
+    # ------------------------------------------------------------------
 
-    cutoff = threshold * noise_ch  # (n_channels,)
-    core_mask_flat = (
-        residual > cutoff[np.newaxis, :]
-    )  # (n_spectra, n_channels)
+    def _compute_noise(res: np.ndarray) -> np.ndarray:
+        noise = np.empty(n_channels)
+        for ch in range(n_channels):
+            col = res[:, ch]
+            amp = float(np.nanmax(np.abs(flat[:, ch]))) + np.finfo(float).tiny
+            noise[ch] = robust_mad_noise_with_floor(col, amp)
+        return noise
 
-    # Reshape to pseudo-3D (n_spectra, 1, n_channels) to reuse existing
-    # spectral dilation and extent-limiting helpers
+    def _pca_ref(rows: np.ndarray) -> tuple[np.ndarray, int]:
+        """Fit PCA on ``rows``, project all of ``flat`` through it."""
+        kk = min(n_components, rows.shape[0] - 1, n_channels - 1)
+        mean = rows.mean(axis=0)
+        _, _, Vt = np.linalg.svd(rows - mean, full_matrices=False)
+        return (flat - mean) @ Vt[:kk, :].T @ Vt[:kk, :] + mean, kk
+
+    # ------------------------------------------------------------------
+    # Pass 1: build initial reference
+    # ------------------------------------------------------------------
+    k = 0
+    if method == "median":
+        ref = np.tile(np.median(flat, axis=0), (n_spectra, 1))
+    else:
+        ref, k = _pca_ref(flat)
+
+    residual = flat - ref
+    noise_ch = _compute_noise(residual)
+    core_mask_p1 = (
+        residual > threshold * noise_ch[np.newaxis, :]
+    ) | zero_mask_flat
+
+    # ------------------------------------------------------------------
+    # Pass 2: rebuild reference excluding flagged data, re-detect
+    # ------------------------------------------------------------------
+    if method == "median":
+        clean = np.where(core_mask_p1, np.nan, flat)
+        ref2_ch = np.nanmedian(clean, axis=0)
+        all_nan = np.all(np.isnan(clean), axis=0)
+        if np.any(all_nan):
+            ref2_ch[all_nan] = np.median(flat[:, all_nan], axis=0)
+        ref = np.tile(ref2_ch, (n_spectra, 1))
+    else:
+        flagged_frac = core_mask_p1.mean(axis=1)
+        clean_idx = np.where(flagged_frac < 0.20)[0]
+        if clean_idx.size >= k + 2:
+            ref, k = _pca_ref(flat[clean_idx])
+
+    residual = flat - ref
+    noise_ch = _compute_noise(residual)
+    cutoff = threshold * noise_ch
+    core_mask_flat = (residual > cutoff[np.newaxis, :]) | zero_mask_flat
+
+    # ------------------------------------------------------------------
+    # Spectral dilation and run-length limiting
+    # ------------------------------------------------------------------
     core_mask_3d = core_mask_flat.reshape(n_spectra, 1, n_channels)
     residual_3d = residual.reshape(n_spectra, 1, n_channels)
 
@@ -393,15 +436,21 @@ def correct_cosmic_rays_collection(
         )
     dilated_flat = dilated_3d.reshape(n_spectra, n_channels)
 
-    # Repair masked channels by spectral interpolation from the reference
+    # ------------------------------------------------------------------
+    # Repair: interpolate from the *original* spectrum's clean channels
+    # ------------------------------------------------------------------
     corrected = flat.copy()
     for r in range(n_spectra):
         m = dilated_flat[r]
         if np.any(m):
-            filled = linear_interpolate_masked_channels_1d(ref[r], m)
+            filled = linear_interpolate_masked_channels_1d(flat[r], m)
             corrected[r] = np.where(m, filled, flat[r])
 
-    bad_rows = list(map(int, np.unique(np.argwhere(core_mask_flat)[:, 0])))
+    bad_rows = (
+        list(map(int, np.unique(np.argwhere(core_mask_flat)[:, 0])))
+        if np.any(core_mask_flat)
+        else []
+    )
 
     meta: dict[str, Any] = {
         "collection_detection": method,
@@ -409,7 +458,7 @@ def correct_cosmic_rays_collection(
         "collection_dilate_used": dil_len,
     }
     if method == "pca":
-        meta["map_n_components"] = k  # type: ignore[possibly-undefined]
+        meta["map_n_components"] = k
     if bad_rows:
         meta["CRs found (spectrum indices)"] = bad_rows
 
@@ -426,6 +475,7 @@ def correct_cosmic_rays_collection(
         "reference": ref.reshape(orig_shape),
         "noise_per_channel": noise_ch,
         "cutoff": cutoff,
+        "zero_mask": zero_mask_flat.reshape(spatial_shape + (n_channels,)),
     }
     return corrected_out, meta, diag
 

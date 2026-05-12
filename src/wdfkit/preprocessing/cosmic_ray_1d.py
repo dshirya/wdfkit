@@ -32,6 +32,28 @@ def _dilate_mask_1d(mask: np.ndarray) -> np.ndarray:
     return out
 
 
+def _zero_saturation_mask(y: np.ndarray) -> np.ndarray:
+    """Flag near-zero channels that are surrounded by positive neighbours.
+
+    Detects detector-saturation artifacts where the ADC clips to 0 instead
+    of returning the true count.  A channel ``i`` is flagged when:
+
+    * ``y[i]`` is below ``1e-4 × median(positive values)``, AND
+    * at least 2 of the 4 nearest neighbours exceed 10% of that median.
+    """
+    pos = y[y > 0]
+    if pos.size < 3:
+        return np.zeros(y.size, dtype=bool)
+    pos_median = float(np.median(pos))
+    floor = 1e-4 * pos_median
+    nbr_thr = 0.1 * pos_median
+    near_zero = y <= floor
+    is_pos = (y > nbr_thr).astype(np.int8)
+    padded = np.pad(is_pos, 2, mode="edge")
+    nbr_sum = padded[:-4] + padded[1:-3] + padded[3:-1] + padded[4:]
+    return near_zero & (nbr_sum >= 2)
+
+
 def positive_spike_mask_vs_median_smooth(
     y: np.ndarray,
     median_smoothed_y: np.ndarray,
@@ -157,8 +179,14 @@ def remove_cosmic_rays_1d(
     if max_passes < 1:
         raise ValueError("max_passes must be >= 1")
 
-    cumulative_mask = np.zeros(n, dtype=bool)
-    current = y1.copy()
+    # Saturated-zero detection runs once on original signal
+    zero_mask = _zero_saturation_mask(y1)
+    cumulative_mask = zero_mask.copy()
+    current = (
+        linear_interpolate_masked_channels_1d(y1, zero_mask)
+        if np.any(zero_mask)
+        else y1.copy()
+    )
 
     for _ in range(max_passes):
         median_filtered = medfilt(current, kernel_size=kernel_size)

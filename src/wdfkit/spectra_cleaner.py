@@ -22,6 +22,7 @@ from .preprocessing._common import (
     transpose_spectral_last,
     with_new_values,
 )
+from .preprocessing.clean_data import CleanData
 from .preprocessing.pca_clean import NComponents, denoise_spectra_pca
 from .wdf.utils import ensure_in_memory
 
@@ -160,6 +161,8 @@ class SpectraCleaner:
                 "SpectraCleaner.clean expects an xarray.DataArray; got "
                 f"{type(spectra).__name__}"
             )
+
+        spectra = CleanData(spectral_dim=self.spectral_dim).check(spectra)
 
         # 1-D single spectrum or explicit per-spectrum flag → smoother
         if spectra.ndim == 1 or self.per_spectrum:

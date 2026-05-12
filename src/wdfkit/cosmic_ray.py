@@ -10,6 +10,7 @@ import numpy as np
 import xarray as xr
 
 from .preprocessing._common import resolve_spectral_dim, with_new_values
+from .preprocessing.clean_data import CleanData
 from .preprocessing.cosmic_ray_1d import remove_cosmic_rays_1d
 from .preprocessing.cosmic_ray_map import (
     correct_cosmic_rays_collection,
@@ -68,8 +69,8 @@ class CosmicRayRemover:
         channels; keep at 5 for narrow single-channel spikes.
     spike_threshold
         **1D engine** — positive float.  Spike cutoff = ``spike_threshold ×
-        MAD_noise``.  Lower → more aggressive (try 3.5–4.0 for noisy
-        spectra).
+        MAD_noise``.  Lower → more aggressive.  Raise to 5–6 for very
+        noisy spectra to avoid false positives.
     spike_passes
         **1D engine** — integer ≥ 1.  Iterations of detect → repair.  Each
         pass works on the already-repaired signal so that large spikes no
@@ -97,7 +98,7 @@ class CosmicRayRemover:
 
     # --- 1D engine ---
     spike_width: int = 5
-    spike_threshold: float = 5.0
+    spike_threshold: float = 3.5
     spike_passes: int = 3
 
     # --- collection / 3D engine ---
@@ -205,6 +206,7 @@ class CosmicRayRemover:
         want_diagnostics: bool,
     ) -> tuple[xr.DataArray, dict[str, Any]]:
         """Dispatch to the correct engine based on shape and spectrum count."""
+        da = CleanData(spectral_dim=self.spectral_dim).check(da)
         ndim = da.ndim
 
         if ndim == 1:

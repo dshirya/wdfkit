@@ -5,7 +5,8 @@ Cosmic-ray removal: see :mod:`wdfkit.cosmic_ray`.
 PCA-based denoising: see :mod:`wdfkit.spectra_cleaner`.
 """
 
+from .clean_data import CleanData
 from .normalize import normalize
 from .pca_clean import denoise_spectra_pca
 
-__all__ = ["normalize", "denoise_spectra_pca"]
+__all__ = ["CleanData", "normalize", "denoise_spectra_pca"]
