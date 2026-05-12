@@ -18,7 +18,7 @@
 from wdfkit.version import __version__  # noqa: F401
 
 from .cosmic_ray import CosmicRayRemover, remove_cosmic_rays_1d  # noqa: F401
-from .preprocessing import normalize  # noqa: F401
+from .preprocessing import CleanData, normalize  # noqa: F401
 from .reader import WDFReader, classify, read  # noqa: F401
 from .spectra_cleaner import SpectraCleaner  # noqa: F401
 from .spectra_smoother import SpectraSmoother  # noqa: F401
@@ -31,6 +31,7 @@ __all__ = [
     "SpectralAxisSpec",
     "resolve_spectral_axis",
     "normalize",
+    "CleanData",
     "CosmicRayRemover",
     "remove_cosmic_rays_1d",
     "SpectraCleaner",
