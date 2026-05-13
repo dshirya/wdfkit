@@ -7,7 +7,7 @@ import pytest
 import xarray as xr
 
 from wdfkit import SpectraCleaner, SpectraSmoother
-from wdfkit.preprocessing.pca_clean import denoise_spectra_pca
+from wdfkit.spectra_cleaner._pca import denoise_spectra_pca
 
 # ---------------------------------------------------------------------------
 # Helpers

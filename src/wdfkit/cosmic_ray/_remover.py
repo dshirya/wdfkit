@@ -9,15 +9,15 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
-from .preprocessing._common import resolve_spectral_dim, with_new_values
-from .preprocessing.clean_data import CleanData
-from .preprocessing.cosmic_ray_1d import remove_cosmic_rays_1d
-from .preprocessing.cosmic_ray_map import (
+from .._shared._spectral import resolve_spectral_dim, with_new_values
+from .._shared.clean_data import CleanData
+from ..wdf.utils import ensure_in_memory
+from ._1d import remove_cosmic_rays_1d
+from ._harmonic import harmonic_correct_dataarray
+from ._map import (
     correct_cosmic_rays_collection,
     correct_cosmic_rays_on_map_cube,
 )
-from .preprocessing.spectral_harmonic_removal import harmonic_correct_dataarray
-from .wdf.utils import ensure_in_memory
 
 # ---------------------------------------------------------------------------
 # Internal tuning constants (not exposed as user parameters)

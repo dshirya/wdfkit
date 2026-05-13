@@ -7,7 +7,7 @@ import pytest
 import xarray as xr
 
 from wdfkit import SpectraSmoother
-from wdfkit.preprocessing.smooth_1d import (
+from wdfkit.spectra_smoother._smooth_1d import (
     auto_lam,
     savgol_smooth_1d,
     whittaker_smooth_1d,

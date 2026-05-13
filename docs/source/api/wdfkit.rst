@@ -37,50 +37,10 @@ wdfkit.spectra\_cleaner
     :undoc-members:
     :show-inheritance:
 
-wdfkit.spectral
-~~~~~~~~~~~~~~~
+wdfkit.spectra\_smoother
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: wdfkit.spectral
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-wdfkit.preprocessing
-~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: wdfkit.preprocessing
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-wdfkit.preprocessing.normalize
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: wdfkit.preprocessing.normalize
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-wdfkit.preprocessing.pca\_clean
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: wdfkit.preprocessing.pca_clean
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-wdfkit.preprocessing.cosmic\_ray\_1d
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: wdfkit.preprocessing.cosmic_ray_1d
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-wdfkit.preprocessing.cosmic\_ray\_map
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: wdfkit.preprocessing.cosmic_ray_map
+.. automodule:: wdfkit.spectra_smoother
     :members:
     :undoc-members:
     :show-inheritance:

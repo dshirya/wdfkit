@@ -10,12 +10,12 @@ from typing import Any, Mapping
 import numpy as np
 import xarray as xr
 
-from ._common import (
+from .._shared._spectral import (
     resolve_spectral_dim,
     transpose_spectral_last,
     with_new_values,
 )
-from .cosmic_ray_1d import linear_interpolate_masked_channels_1d
+from ._1d import linear_interpolate_masked_channels_1d
 
 # Excitation laser in air; third harmonic of ~1064 nm Nd:YAG.
 _ND_YAG_TRIGGER_NM_LOW = 354.0

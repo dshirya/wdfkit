@@ -110,9 +110,8 @@ For fine-grained control, call the steps separately:
 .. code-block:: python
 
     remover = CosmicRayRemover(
-        sensitivity=0.02,    # more aggressive detection
-        threshold=4.0,       # lower threshold for single-spectrum path
-        single_spectrum_method="interpolate",
+        spike_threshold=4.0,     # lower threshold → more aggressive
+        map_sensitivity=0.02,    # more aggressive map detection
     )
 
     data_no_harmonics = remover.harmonic_check(data)
@@ -120,15 +119,16 @@ For fine-grained control, call the steps separately:
 
 To inspect detections and masks, use the diagnostics method (keys depend on
 dimensionality — **3D maps** expose ``core_mask`` / ``repair_mask``; **2D**
-single-row spectra expose ``cosmic_mask``, etc.):
+collections expose ``core_mask`` and ``reference``; **1D** exposes
+``cosmic_mask``):
 
 .. code-block:: python
 
     data_clean, diagnostics = remover.remove_with_diagnostics(data)
-    # e.g. diagnostics["core_mask"] — boolean array of detected spikes (maps)
-    # diagnostics["repair_mask"] — dilated mask that was interpolated (maps)
+    # e.g. diagnostics["core_mask"] — boolean array of detected spikes
+    # diagnostics["repair_mask"] — dilated mask that was interpolated
 
-Key parameters for **single-spectrum** removal:
+Key parameters for **1D / per-spectrum** removal:
 
 .. list-table::
    :header-rows: 1
@@ -136,14 +136,12 @@ Key parameters for **single-spectrum** removal:
 
    * - Parameter
      - Description
-   * - ``single_spectrum_method``
-     - ``"median"`` (default), ``"interpolate"``, or ``"derivative"``
-   * - ``kernel_size``
-     - Odd integer ≥ 3; median filter window
-   * - ``threshold``
-     - Multiplier on robust noise (higher → fewer detections)
-   * - ``max_passes``
-     - Single-spectrum path: number of detect–repair iterations (default ``3``)
+   * - ``spike_width``
+     - Odd integer ≥ 3; median filter window (default ``5``)
+   * - ``spike_threshold``
+     - Multiplier on robust MAD noise (lower → more aggressive, default ``3.5``)
+   * - ``spike_passes``
+     - Number of detect–repair iterations (default ``3``)
 
 Key parameters for **map** removal:
 
@@ -153,20 +151,18 @@ Key parameters for **map** removal:
 
    * - Parameter
      - Description
-   * - ``sensitivity``
-     - Scales detection aggressiveness (higher → more hits)
-   * - ``width``
-     - Spectral mask dilation as a fraction of the spectral length (map path)
-   * - ``disk_radius``
-     - Spatial disk radius for the median reference filter
-   * - ``map_mad_multiplier``
-     - Multiplier on per-channel MAD noise (larger → fewer false positives)
-   * - ``map_require_spatial_local_max``
-     - If True (default), keep only spatial local maxima at fixed wavelength,
-       reducing bright extended features misclassified as cosmic rays
+   * - ``map_method``
+     - ``"median"`` (default) or ``"pca"`` reference for 2D/3D collections
+   * - ``map_sensitivity``
+     - Scales detection aggressiveness for 3D disk-median engine (default ``0.01``)
+   * - ``map_disk_radius``
+     - Spatial disk radius for the 3D median reference filter (default ``3``)
+   * - ``map_spike_width``
+     - Spectral dilation window as a fraction of spectrum length (default ``0.02``)
+   * - ``map_n_components``
+     - Number of PCA components when ``map_method="pca"`` (default ``3``)
 
-See :class:`~wdfkit.CosmicRayRemover` for additional map tuning parameters
-(``map_noisy_channel_relax_min``, ``map_spectral_dilate_cap``, …).
+See :class:`~wdfkit.CosmicRayRemover` for the full parameter list.
 
 Normalization
 -------------
@@ -224,20 +220,22 @@ fields). Large arrays live only in ``decomp`` (``components``, ``coeffs``, …).
 Typical workflow
 ----------------
 
-A common end-to-end pipeline for a Raman map:
+A common end-to-end pipeline for a Raman/PL map:
 
 .. code-block:: python
 
     from wdfkit import WDFReader, CosmicRayRemover, normalize, SpectraCleaner
 
     # 1. Load
-    data, image = WDFReader("raman_map.wdf")
+    data, image = WDFReader("map.wdf")
 
-    # 2. Remove cosmic rays (and Nd:YAG harmonics if applicable)
-    data = CosmicRayRemover(sensitivity=0.015).remove(data)
+    # 2. Remove cosmic rays (harmonics + spikes).
+    #    Oversaturated spectra are detected and removed automatically.
+    data = CosmicRayRemover().remove(data)
 
     # 3. Normalize
     data = normalize(data, method="area")
 
-    # 4. PCA denoise (any multi-spectrum cube or stack)
+    # 4. PCA denoise.
+    #    Oversaturated spectra are also checked automatically here.
     data = SpectraCleaner(n_components="mle").clean(data)

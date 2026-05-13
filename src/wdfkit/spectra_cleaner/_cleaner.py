@@ -16,18 +16,18 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import xarray as xr
 
-from .preprocessing._common import (
+from .._shared._spectral import (
     reshape_row_stack_to,
     resolve_spectral_dim,
     transpose_spectral_last,
     with_new_values,
 )
-from .preprocessing.clean_data import CleanData
-from .preprocessing.pca_clean import NComponents, denoise_spectra_pca
-from .wdf.utils import ensure_in_memory
+from .._shared.clean_data import CleanData
+from ..wdf.utils import ensure_in_memory
+from ._pca import NComponents, denoise_spectra_pca
 
 if TYPE_CHECKING:
-    from .spectra_smoother import SpectraSmoother
+    from ..spectra_smoother import SpectraSmoother
 
 CleanMethod = Literal["pca"]
 
@@ -145,7 +145,7 @@ class SpectraCleaner:
         """Return the configured smoother, or a default one."""
         if self.smoother is not None:
             return self.smoother
-        from .spectra_smoother import SpectraSmoother
+        from ..spectra_smoother import SpectraSmoother
 
         return SpectraSmoother()
 
