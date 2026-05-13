@@ -8,7 +8,7 @@ import pytest
 import xarray as xr
 
 from wdfkit import CosmicRayRemover
-from wdfkit.preprocessing.spectral_harmonic_removal import (
+from wdfkit.cosmic_ray._harmonic import (
     harmonic_correct_dataarray,
     read_laser_wavelength_nm,
     should_apply_nd_yag_harmonic_cleanup,

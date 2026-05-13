@@ -15,18 +15,14 @@ from typing import Any, Literal
 import numpy as np
 import xarray as xr
 
-from .preprocessing._common import (
+from .._shared._spectral import (
     reshape_row_stack_to,
     resolve_spectral_dim,
     transpose_spectral_last,
     with_new_values,
 )
-from .preprocessing.smooth_1d import (
-    auto_lam,
-    savgol_smooth_1d,
-    whittaker_smooth_1d,
-)
-from .wdf.utils import ensure_in_memory
+from ..wdf.utils import ensure_in_memory
+from ._smooth_1d import auto_lam, savgol_smooth_1d, whittaker_smooth_1d
 
 SmoothMethod = Literal["savgol", "whittaker"]
 

@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Spectral preprocessing (normalization).
+"""Backward-compatibility shim for ``wdfkit.preprocessing``.
 
-Cosmic-ray removal: see :mod:`wdfkit.cosmic_ray`.
-PCA-based denoising: see :mod:`wdfkit.spectra_cleaner`.
+.. deprecated::
+    Import directly from the new locations:
+
+    * ``normalize``           → :func:`wdfkit.normalize`
+    * ``denoise_spectra_pca`` → :mod:`wdfkit.spectra_cleaner._pca`
+    * ``cosmic_ray_*``        → :mod:`wdfkit.cosmic_ray`
+    * ``smooth_1d``           → :mod:`wdfkit.spectra_smoother._smooth_1d`
 """
 
-from .clean_data import CleanData
-from .normalize import normalize
-from .pca_clean import denoise_spectra_pca
+from .._shared.normalize import normalize
+from ..spectra_cleaner._pca import denoise_spectra_pca
 
-__all__ = ["CleanData", "normalize", "denoise_spectra_pca"]
+__all__ = ["normalize", "denoise_spectra_pca"]

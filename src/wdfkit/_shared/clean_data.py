@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
-from ._common import resolve_spectral_dim
+from ._spectral import resolve_spectral_dim
 
 _TREATMENT_KEY = "Oversaturation Check"
 

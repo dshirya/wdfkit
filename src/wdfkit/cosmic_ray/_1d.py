@@ -6,10 +6,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.signal import medfilt
 
-from .cosmic_ray_mad import (
-    noise_estimate_too_small,
-    robust_mad_noise_with_floor,
-)
+from ._mad import noise_estimate_too_small, robust_mad_noise_with_floor
 
 
 def _coerce_float_1d_spectrum(y: np.ndarray, kernel_size: int) -> np.ndarray:

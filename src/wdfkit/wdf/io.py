@@ -9,7 +9,6 @@ import os
 import numpy as np
 import xarray as xr
 
-from ..spectral import resolve_spectral_axis
 from .block_index import scan_blocks
 from .blocks.data_block import parse_data
 from .blocks.origin import parse_orgn, print_coord_lengths_if_verbose
@@ -23,6 +22,7 @@ from .blocks.ylst import parse_ylst
 from .memory_check import check_memory
 from .parse_context import ParseContext
 from .parsed import OrgnEntry, ParsedWDF, WMAPInfo, XLSTInfo, YLSTInfo
+from .spectral import resolve_spectral_axis
 from .types import get_spectral_dim_name
 
 

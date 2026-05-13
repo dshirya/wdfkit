@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from wdfkit.preprocessing.normalize import _trapz_y, normalize
+from wdfkit._shared.normalize import _trapz_y, normalize
 
 # All supported method names (``invalid`` triggers warn + no-op scaling).
 NORMALIZE_METHODS = (

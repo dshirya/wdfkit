@@ -9,11 +9,8 @@ import numpy as np
 from scipy.ndimage import grey_dilation
 from skimage import filters, morphology
 
-from .cosmic_ray_1d import (
-    _zero_saturation_mask,
-    linear_interpolate_masked_channels_1d,
-)
-from .cosmic_ray_mad import robust_mad_noise_with_floor
+from ._1d import _zero_saturation_mask, linear_interpolate_masked_channels_1d
+from ._mad import robust_mad_noise_with_floor
 
 _LEGACY_SENSITIVITY_REFERENCE = 0.01
 

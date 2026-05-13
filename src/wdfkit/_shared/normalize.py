@@ -10,7 +10,7 @@ import xarray as xr
 from sklearn import preprocessing
 
 from ..wdf.utils import ensure_in_memory
-from ._common import (
+from ._spectral import (
     reshape_row_stack_to,
     resolve_spectral_dim,
     transpose_spectral_last,
@@ -97,13 +97,7 @@ def _make_apply_ufunc_kernel(
     kwargs: dict[str, Any],
 ):
     """Return a function ``(spectra_nd,) → normalized_nd`` for use with
-    ``xr.apply_ufunc``.
-
-    ``apply_ufunc`` with ``input_core_dims=[[sdim]]`` passes the spectral
-    axis as the *last* axis of a plain NumPy array, with all spatial dims
-    flattened along leading axes.  We reshape to 2D, run the kernel, and
-    reshape back.
-    """
+    ``xr.apply_ufunc``."""
 
     def _kernel(arr: np.ndarray) -> np.ndarray:
         orig_shape = arr.shape
@@ -144,8 +138,8 @@ def normalize(
     input_spectra
         DataArray or 2D ndarray of shape ``(n_spectra, n_points)``.
     method
-        One of ``\"l1\"``, ``\"l2\"``, ``\"max\"``, ``\"min_max\"``,
-        ``\"wave_number\"``, ``\"robust_scale\"``, ``\"area\"``.
+        One of ``"l1"``, ``"l2"``, ``"max"``, ``"min_max"``,
+        ``"wave_number"``, ``"robust_scale"``, ``"area"``.
     spectral_dim
         Spectral dimension name when ``input_spectra`` is a DataArray.
     x_values
@@ -153,7 +147,7 @@ def normalize(
 
     Returns
     -------
-    Same type as ``input_spectra`` with updated ``attrs[\"treatments\"]`` for
+    Same type as ``input_spectra`` with updated ``attrs["treatments"]`` for
     DataArray output.
     """
     if method not in _ALL_METHODS:
@@ -167,7 +161,7 @@ def normalize(
             input_spectra, method, spectral_dim, kwargs
         )
 
-    # --- ndarray path (unchanged) -------------------------------------------
+    # --- ndarray path ---
     spectra = np.asarray(input_spectra)
     if spectra.ndim != 2:
         raise ValueError(
@@ -192,7 +186,7 @@ def _normalize_dataarray(
     """DataArray normalisation, Dask-aware."""
     sdim = resolve_spectral_dim(da, spectral_dim)
     da_w, orig_order = transpose_spectral_last(da, sdim)
-    x_values = da_w[sdim].values  # always a small NumPy array
+    x_values = da_w[sdim].values
 
     meta_keys = (
         "quantile",
@@ -221,7 +215,6 @@ def _normalize_dataarray(
         is_dask = False
 
     if is_dask:
-        # Per-spectrum method: process each chunk independently.
         kernel = _make_apply_ufunc_kernel(method, x_values, kwargs)
         out_w = xr.apply_ufunc(
             kernel,
@@ -232,7 +225,6 @@ def _normalize_dataarray(
             output_dtypes=[da_w.dtype],
         )
     else:
-        # Eager path: run the existing NumPy kernel.
         spectra_2d = da_w.values.reshape(-1, da_w.shape[-1])
         out_2d = _normalize_numpy_block(spectra_2d, method, x_values, kwargs)
         packed = reshape_row_stack_to(out_2d, da_w.shape)
