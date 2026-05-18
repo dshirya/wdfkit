@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release notes &mdash; wdfkit 0.1.1rc1 documentation</title>
+  <title>Release notes &mdash; wdfkit 0.1.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=4a90fbe9"></script>
+      <script src="_static/documentation_options.js?v=91f6191e"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -50,8 +50,9 @@
 <li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/wdfkit.html">Package API</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Release notes</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#id1">0.1.0</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id2">0.0.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id1">0.1.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">0.1.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">0.0.1</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="license.html">License</a></li>
@@ -84,7 +85,38 @@
   <section id="release-notes">
 <span id="index-0"></span><h1>Release notes<a class="headerlink" href="#release-notes" title="Link to this heading"></a></h1>
 <section id="id1">
-<h2>0.1.0<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<h2>0.1.1<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<p><strong>Added:</strong></p>
+<ul class="simple">
+<li><p>Added <code class="docutils literal notranslate"><span class="pre">SpectraSmoother</span></code> support for 1-D single spectra.</p></li>
+<li><p>Added “PCA” CosmicRayRemover for 3D spectra</p></li>
+<li><p>Add <code class="docutils literal notranslate"><span class="pre">CleanData</span></code> class to detect oversaturated spectra (10+ consecutive zero channels) and automatically remove them from 2D/3D arrays; integrated as the first step in <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> and <code class="docutils literal notranslate"><span class="pre">SpectraCleaner</span></code>.</p></li>
+<li><p>Add zero-saturation detection to <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> via <code class="docutils literal notranslate"><span class="pre">_zero_saturation_mask</span></code>, flagging ADC-clipped channels before positive-spike removal.</p></li>
+<li><p>Add reading of InitialCoordinates for 2D files.</p></li>
+<li><p>Added <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> support for 1-D single spectra.</p></li>
+<li><p>Add initial coordinate for 1D WDF files.</p></li>
+</ul>
+<p><strong>Changed:</strong></p>
+<ul class="simple">
+<li><p>Reorganize package internals into dedicated sub-packages; the public API is unchanged.</p></li>
+<li><p>Restrict top-level exports to <code class="docutils literal notranslate"><span class="pre">WDFReader</span></code>, <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code>, <code class="docutils literal notranslate"><span class="pre">SpectraCleaner</span></code>, and <code class="docutils literal notranslate"><span class="pre">normalize</span></code>.</p></li>
+<li><p>CHANGELOG.rst file updated.</p></li>
+<li><p>Changed parameters set for CosmicRayRemover</p></li>
+</ul>
+<p><strong>Deprecated:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">wdfkit.preprocessing</span></code> module; import <code class="docutils literal notranslate"><span class="pre">normalize</span></code> directly from <code class="docutils literal notranslate"><span class="pre">wdfkit</span></code> instead.</p></li>
+</ul>
+<p><strong>Fixed:</strong></p>
+<ul class="simple">
+<li><p>Fixed a bug in the spectra smoother where the spectral dimension was not being preserved.</p></li>
+<li><p>Fix <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> collection-engine repair to interpolate from the original spectrum’s clean channels instead of the PCA reference, eliminating residual negative spikes.</p></li>
+<li><p>Fix <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> collection engine to run a second detection pass on a reference rebuilt from clean data, improving sensitivity on heterogeneous maps.</p></li>
+<li><p>Lower default <code class="docutils literal notranslate"><span class="pre">spike_threshold</span></code> in <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> from <code class="docutils literal notranslate"><span class="pre">5.0</span></code> to <code class="docutils literal notranslate"><span class="pre">3.5</span></code> to improve cosmic-ray detection on typical spectra.</p></li>
+</ul>
+</section>
+<section id="id2">
+<h2>0.1.0<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
 <p><strong>Added:</strong></p>
 <ul class="simple">
 <li><p>Add optional <code class="docutils literal notranslate"><span class="pre">chunks</span></code> on <code class="docutils literal notranslate"><span class="pre">WDFReader</span></code> for lazy, Dask-backed map reads with Y-row-aligned targets and a RAM guard before the <code class="docutils literal notranslate"><span class="pre">DATA</span></code> block.</p></li>
@@ -114,8 +146,8 @@
 <li><p>Remove the old <code class="docutils literal notranslate"><span class="pre">wdf/assemble.py</span></code>-centric layout, duplicate package roots absorbed into <code class="docutils literal notranslate"><span class="pre">wdf/</span></code>, and a few obsolete test helpers.</p></li>
 </ul>
 </section>
-<section id="id2">
-<h2>0.0.1<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<section id="id3">
+<h2>0.0.1<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
 <p><strong>Changed:</strong></p>
 <ul class="simple">
 <li><p>README.rst file updated.</p></li>
