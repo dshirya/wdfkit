@@ -144,7 +144,7 @@ def test_cosmic_ray_map_removes_spike():
         attrs={"treatments": {}},
     )
     cr = CosmicRayRemover(
-        map_sensitivity=0.5, map_spike_width=0.08, map_disk_radius=2
+        map_sensitivity=0.5, map_spike_width=8, map_disk_radius=2
     )
     out = cr.transform(da)
     assert out.values[2, 2, 20] < cube[2, 2, 20] / 5

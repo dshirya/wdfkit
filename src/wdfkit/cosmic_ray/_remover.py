@@ -25,10 +25,8 @@ from ._map import (
 
 _MAP_MAD_MULTIPLIER: float = 7.0
 _MAP_NOISY_RELAX_MIN: float = 0.82
-_MAP_SPECTRAL_DILATE_CAP: int = 5
-_MAP_MAX_REPAIR_EXTENT: int = 12
 _MAP_MIN_RESIDUAL_OVER_CUTOFF: float = 1.05
-_MAP_REQUIRE_SPATIAL_LOCAL_MAX: bool = True
+_MAP_REQUIRE_SPATIAL_LOCAL_MAX: bool = False
 
 # Below this many spectra → apply 1D engine independently per spectrum;
 # at or above → use the collection (global-median / PCA) engine.
@@ -82,8 +80,10 @@ class CosmicRayRemover:
         **3D disk-median engine only** — spatial disk radius for the
         reference median filter (pixels).
     map_spike_width
-        **Collection / 3D engines** — fraction of spectrum length used as
-        spectral dilation window for the repair mask (0 < value ≤ 1).
+        **Collection / 3D engines** — spectral dilation in channels added
+        around each detected hit (integer ≥ 1).  Increase for broader
+        cosmic rays (e.g. ``9``–``15`` for multi-channel spikes).  The
+        repair region is capped at ``2 × map_spike_width`` channels.
     map_method
         ``"median"`` (default): global median spectrum as reference for 2D;
         spatial disk-median for 3D.
@@ -104,7 +104,7 @@ class CosmicRayRemover:
     # --- collection / 3D engine ---
     map_sensitivity: float = 0.01
     map_disk_radius: int = 3
-    map_spike_width: float = 0.02
+    map_spike_width: int = 5
     map_method: str = "median"
     map_n_components: int = 3
 
@@ -122,8 +122,8 @@ class CosmicRayRemover:
             raise ValueError("spike_passes must be >= 1")
         if self.map_sensitivity <= 0:
             raise ValueError("map_sensitivity must be > 0")
-        if not 0 < self.map_spike_width <= 1:
-            raise ValueError("map_spike_width must be in (0, 1]")
+        if self.map_spike_width < 1:
+            raise ValueError("map_spike_width must be >= 1")
         if self.map_disk_radius < 1:
             raise ValueError("map_disk_radius must be >= 1")
         if self.map_method not in ("median", "pca"):
@@ -324,9 +324,8 @@ class CosmicRayRemover:
             np.asarray(da.values, dtype=float),
             method=self.map_method,
             threshold=self.spike_threshold,
-            spectral_width_fraction=self.map_spike_width,
-            spectral_dilate_cap=_MAP_SPECTRAL_DILATE_CAP,
-            max_repair_extent=_MAP_MAX_REPAIR_EXTENT,
+            spectral_dilate_channels=self.map_spike_width,
+            max_repair_extent=self.map_spike_width * 2,
             n_components=self.map_n_components,
             return_diagnostics=want_diagnostics,
         )
@@ -352,9 +351,8 @@ class CosmicRayRemover:
                 np.asarray(da.values, dtype=float),
                 method="pca",
                 threshold=self.spike_threshold,
-                spectral_width_fraction=self.map_spike_width,
-                spectral_dilate_cap=_MAP_SPECTRAL_DILATE_CAP,
-                max_repair_extent=_MAP_MAX_REPAIR_EXTENT,
+                spectral_dilate_channels=self.map_spike_width,
+                max_repair_extent=self.map_spike_width * 2,
                 n_components=self.map_n_components,
                 return_diagnostics=want_diagnostics,
             )
@@ -372,12 +370,11 @@ class CosmicRayRemover:
         result_map = correct_cosmic_rays_on_map_cube(
             da.values,
             sensitivity=self.map_sensitivity,
-            spectral_width_fraction=self.map_spike_width,
+            spectral_dilate_channels=self.map_spike_width,
             disk_radius=self.map_disk_radius,
             map_mad_multiplier=_MAP_MAD_MULTIPLIER,
             map_noisy_channel_relax_min=_MAP_NOISY_RELAX_MIN,
-            map_spectral_dilate_cap=_MAP_SPECTRAL_DILATE_CAP,
-            map_max_spectral_repair_extent=_MAP_MAX_REPAIR_EXTENT,
+            map_max_spectral_repair_extent=self.map_spike_width * 2,
             map_min_residual_over_cutoff=_MAP_MIN_RESIDUAL_OVER_CUTOFF,
             map_require_spatial_local_max=_MAP_REQUIRE_SPATIAL_LOCAL_MAX,
             return_diagnostic_masks=want_diagnostics,

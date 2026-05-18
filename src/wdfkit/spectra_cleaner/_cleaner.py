@@ -108,6 +108,12 @@ class SpectraCleaner:
 
     def clean(self, spectra: xr.DataArray) -> xr.DataArray:
         """Return a denoised copy of ``spectra`` (no decomposition payload)."""
+        if not isinstance(spectra, xr.DataArray):
+            raise TypeError(
+                "SpectraCleaner.clean expects an xarray.DataArray; got "
+                f"{type(spectra).__name__}"
+            )
+        spectra = CleanData(spectral_dim=self.spectral_dim).check(spectra)
         cleaned, meta, _ = self._clean_core(
             spectra, return_decomposition=False
         )
@@ -127,6 +133,12 @@ class SpectraCleaner:
         ``explained_variance``, ``explained_variance_ratio``,
         ``noise_variance``.
         """
+        if not isinstance(spectra, xr.DataArray):
+            raise TypeError(
+                "SpectraCleaner.clean expects an xarray.DataArray; got "
+                f"{type(spectra).__name__}"
+            )
+        spectra = CleanData(spectral_dim=self.spectral_dim).check(spectra)
         cleaned, meta, payload = self._clean_core(
             spectra, return_decomposition=True
         )
@@ -156,14 +168,6 @@ class SpectraCleaner:
         return_decomposition: bool,
     ) -> tuple[np.ndarray, dict[str, Any], dict[str, Any] | None]:
         """Route to smoother or PCA, return ``(cleaned, meta, payload)``."""
-        if not isinstance(spectra, xr.DataArray):
-            raise TypeError(
-                "SpectraCleaner.clean expects an xarray.DataArray; got "
-                f"{type(spectra).__name__}"
-            )
-
-        spectra = CleanData(spectral_dim=self.spectral_dim).check(spectra)
-
         # 1-D single spectrum or explicit per-spectrum flag → smoother
         if spectra.ndim == 1 or self.per_spectrum:
             smoother = self._get_smoother()
