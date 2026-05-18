@@ -1,0 +1,324 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>wdfkit.spectra_smoother._smoother &mdash; wdfkit 0.1.1rc1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=4a90fbe9"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=cca77546"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            wdfkit
+              <img src="../../../_static/logo-no-background.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/wdfkit.html">Package API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">wdfkit</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">wdfkit.spectra_smoother._smoother</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for wdfkit.spectra_smoother._smoother</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;High-level per-spectrum smoothing: :class:`SpectraSmoother`.</span>
+
+<span class="sd">Applies Savitzky-Golay or Whittaker-Eilers filtering independently to every</span>
+<span class="sd">spectrum in a DataArray of any shape.  Works on 1-D single spectra, 2-D</span>
+<span class="sd">stacks, and 3-D map cubes — the spectral axis is always the last dimension</span>
+<span class="sd">after an internal transpose.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Literal</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.._shared._spectral</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">reshape_row_stack_to</span><span class="p">,</span>
+    <span class="n">resolve_spectral_dim</span><span class="p">,</span>
+    <span class="n">transpose_spectral_last</span><span class="p">,</span>
+    <span class="n">with_new_values</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..wdf.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">ensure_in_memory</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._smooth_1d</span><span class="w"> </span><span class="kn">import</span> <span class="n">auto_lam</span><span class="p">,</span> <span class="n">savgol_smooth_1d</span><span class="p">,</span> <span class="n">whittaker_smooth_1d</span>
+
+<span class="n">SmoothMethod</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;savgol&quot;</span><span class="p">,</span> <span class="s2">&quot;whittaker&quot;</span><span class="p">]</span>
+
+<span class="n">_TREATMENT_KEY</span> <span class="o">=</span> <span class="s2">&quot;spectra_smoothing&quot;</span>
+
+
+<div class="viewcode-block" id="SpectraSmoother">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.SpectraSmoother">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">SpectraSmoother</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-spectrum 1-D smoothing for DataArrays of any shape.</span>
+
+<span class="sd">    Applies the chosen filter independently to every spectrum along the</span>
+<span class="sd">    spectral axis.  Suitable for 1-D single spectra, 2-D stacks</span>
+<span class="sd">    ``(n_spectra, spectral)``, and 3-D map cubes ``(y, x, spectral)``.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    method</span>
+<span class="sd">        ``\&quot;savgol\&quot;`` (default) — Savitzky-Golay filter via</span>
+<span class="sd">        ``scipy.signal.savgol_filter``.</span>
+<span class="sd">        ``\&quot;whittaker\&quot;`` — Whittaker-Eilers smoother (sparse linear system).</span>
+<span class="sd">    window_length</span>
+<span class="sd">        Savitzky-Golay: number of channels in the filter window.</span>
+<span class="sd">        Must be odd and &gt;= ``polyorder + 2``.</span>
+<span class="sd">    polyorder</span>
+<span class="sd">        Savitzky-Golay: polynomial order (must be &lt; ``window_length``).</span>
+<span class="sd">    lam</span>
+<span class="sd">        Whittaker-Eilers: smoothness penalty λ.  ``None`` (default) triggers</span>
+<span class="sd">        automatic selection via GCV minimisation (see ``auto_lam_calls``).</span>
+<span class="sd">    d</span>
+<span class="sd">        Whittaker-Eilers: difference order (default 2).</span>
+<span class="sd">    auto_lam_calls</span>
+<span class="sd">        Maximum GCV evaluations when ``lam=None`` (default 5).</span>
+<span class="sd">    spectral_dim</span>
+<span class="sd">        Name of the spectral axis.  Defaults to the last dimension.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">method</span><span class="p">:</span> <span class="n">SmoothMethod</span> <span class="o">=</span> <span class="s2">&quot;savgol&quot;</span>
+    <span class="n">window_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">11</span>
+    <span class="n">polyorder</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="n">lam</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">d</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">auto_lam_calls</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span>
+    <span class="n">spectral_dim</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">allowed</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;savgol&quot;</span><span class="p">,</span> <span class="s2">&quot;whittaker&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;method must be one of </span><span class="si">{</span><span class="n">allowed</span><span class="si">!r}</span><span class="s2">; got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="si">!r}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;window_length must be odd and &gt;= 3; got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">window_length</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">polyorder</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;polyorder (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">polyorder</span><span class="si">}</span><span class="s2">) must be &lt; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;window_length (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">window_length</span><span class="si">}</span><span class="s2">)&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;lam must be positive; got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lam</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;d must be &gt;= 1; got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">d</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_lam_calls</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;auto_lam_calls must be &gt;= 1; got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">auto_lam_calls</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Public API</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="SpectraSmoother.smooth">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.SpectraSmoother.smooth">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">smooth</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a smoothed copy of ``spectrum``.</span>
+
+<span class="sd">        Works on DataArrays of any shape.  Each spectrum (row along the</span>
+<span class="sd">        spectral axis) is smoothed independently.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="s2">&quot;SpectraSmoother.smooth expects an xarray.DataArray; got &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">spectrum</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="n">cleaned</span><span class="p">,</span> <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_smooth_core</span><span class="p">(</span><span class="n">spectrum</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">with_new_values</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">cleaned</span><span class="p">,</span> <span class="n">_TREATMENT_KEY</span><span class="p">,</span> <span class="n">meta</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SpectraSmoother.transform">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.SpectraSmoother.transform">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Alias of :meth:`smooth`.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">smooth</span><span class="p">(</span><span class="n">spectrum</span><span class="p">)</span></div>
+
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Internal helpers (also used by SpectraCleaner)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_smooth_core</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">spectra</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate, load, smooth, and return ``(cleaned_array, meta)``.</span>
+
+<span class="sd">        The returned array has the same shape as ``spectra.values``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">sdim</span> <span class="o">=</span> <span class="n">resolve_spectral_dim</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spectral_dim</span><span class="p">)</span>
+        <span class="n">da_w</span><span class="p">,</span> <span class="n">orig_order</span> <span class="o">=</span> <span class="n">transpose_spectral_last</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">sdim</span><span class="p">)</span>
+
+        <span class="n">da_w</span> <span class="o">=</span> <span class="n">ensure_in_memory</span><span class="p">(</span>
+            <span class="n">da_w</span><span class="p">,</span>
+            <span class="n">caller</span><span class="o">=</span><span class="s2">&quot;SpectraSmoother&quot;</span><span class="p">,</span>
+            <span class="n">reason</span><span class="o">=</span><span class="s2">&quot;Per-spectrum smoothing requires the full array in memory.&quot;</span><span class="p">,</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">values</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">original_shape</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">n_spectral</span> <span class="o">=</span> <span class="n">original_shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># Flatten to (n_spectra, n_spectral) — works for any ndim ≥ 1</span>
+        <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">row_stack</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_spectral</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">row_stack</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_spectral</span><span class="p">)</span>
+
+        <span class="n">cleaned_rows</span><span class="p">,</span> <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_smooth_rows</span><span class="p">(</span><span class="n">row_stack</span><span class="p">)</span>
+        <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;spectral_dim&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">sdim</span>
+
+        <span class="n">cleaned_w</span> <span class="o">=</span> <span class="n">reshape_row_stack_to</span><span class="p">(</span><span class="n">cleaned_rows</span><span class="p">,</span> <span class="n">original_shape</span><span class="p">)</span>
+
+        <span class="c1"># Restore original dimension order if we transposed</span>
+        <span class="k">if</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">da_w</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span> <span class="o">!=</span> <span class="n">orig_order</span><span class="p">:</span>
+            <span class="n">cleaned_da</span> <span class="o">=</span> <span class="n">da_w</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">cleaned_w</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="o">*</span><span class="n">orig_order</span><span class="p">)</span>
+            <span class="n">cleaned</span> <span class="o">=</span> <span class="n">cleaned_da</span><span class="o">.</span><span class="n">values</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cleaned</span> <span class="o">=</span> <span class="n">cleaned_w</span>
+
+        <span class="k">return</span> <span class="n">cleaned</span><span class="p">,</span> <span class="n">meta</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_smooth_rows</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">row_stack</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply the smoother to every row of ``(n_spectra, n_spectral)``.</span>
+
+<span class="sd">        Returns ``(cleaned_rows, meta)``.  When ``lam=None`` for the</span>
+<span class="sd">        Whittaker method the optimal λ is determined once from the mean</span>
+<span class="sd">        spectrum and reused for all rows.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_spectra</span><span class="p">,</span> <span class="n">n_spectral</span> <span class="o">=</span> <span class="n">row_stack</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">cleaned</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">row_stack</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="n">meta</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">}</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;savgol&quot;</span><span class="p">:</span>
+            <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;window_length&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span>
+            <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;polyorder&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">polyorder</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_spectra</span><span class="p">):</span>
+                <span class="n">cleaned</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">savgol_smooth_1d</span><span class="p">(</span>
+                    <span class="n">row_stack</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">polyorder</span>
+                <span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># whittaker</span>
+            <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;d&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">lam_used</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span>
+                <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;lam&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">lam_used</span>
+                <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;lam_auto&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Estimate λ once from the mean spectrum</span>
+                <span class="n">mean_spec</span> <span class="o">=</span> <span class="n">row_stack</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">lam_used</span> <span class="o">=</span> <span class="n">auto_lam</span><span class="p">(</span>
+                    <span class="n">mean_spec</span><span class="p">,</span> <span class="n">d</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">d</span><span class="p">,</span> <span class="n">max_calls</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">auto_lam_calls</span>
+                <span class="p">)</span>
+                <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;lam_used&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">lam_used</span>
+                <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;lam_auto&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;auto_lam_calls&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_lam_calls</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_spectra</span><span class="p">):</span>
+                <span class="n">cleaned</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">whittaker_smooth_1d</span><span class="p">(</span>
+                    <span class="n">row_stack</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">lam_used</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span>
+                <span class="p">)</span>
+
+        <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;n_spectra&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">n_spectra</span>
+        <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;n_spectral&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">n_spectral</span>
+        <span class="k">return</span> <span class="n">cleaned</span><span class="p">,</span> <span class="n">meta</span></div>
+
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;SpectraSmoother&quot;</span><span class="p">,</span> <span class="s2">&quot;SmoothMethod&quot;</span><span class="p">]</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Ecole Polytechnique Palaiseau.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

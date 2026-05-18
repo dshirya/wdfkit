@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Getting started &mdash; wdfkit 0.1.0 documentation</title>
+  <title>Getting started &mdash; wdfkit 0.1.1rc1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=38b66d78"></script>
+      <script src="_static/documentation_options.js?v=4a90fbe9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -172,9 +172,8 @@ singleton axis so the spectral dimension stays <strong>last</strong> (shape
 </div>
 <p>For fine-grained control, call the steps separately:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">remover</span> <span class="o">=</span> <span class="n">CosmicRayRemover</span><span class="p">(</span>
-    <span class="n">sensitivity</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>    <span class="c1"># more aggressive detection</span>
-    <span class="n">threshold</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>       <span class="c1"># lower threshold for single-spectrum path</span>
-    <span class="n">single_spectrum_method</span><span class="o">=</span><span class="s2">&quot;interpolate&quot;</span><span class="p">,</span>
+    <span class="n">spike_threshold</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>     <span class="c1"># lower threshold → more aggressive</span>
+    <span class="n">map_sensitivity</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>    <span class="c1"># more aggressive map detection</span>
 <span class="p">)</span>
 
 <span class="n">data_no_harmonics</span> <span class="o">=</span> <span class="n">remover</span><span class="o">.</span><span class="n">harmonic_check</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
@@ -183,13 +182,14 @@ singleton axis so the spectral dimension stays <strong>last</strong> (shape
 </div>
 <p>To inspect detections and masks, use the diagnostics method (keys depend on
 dimensionality — <strong>3D maps</strong> expose <code class="docutils literal notranslate"><span class="pre">core_mask</span></code> / <code class="docutils literal notranslate"><span class="pre">repair_mask</span></code>; <strong>2D</strong>
-single-row spectra expose <code class="docutils literal notranslate"><span class="pre">cosmic_mask</span></code>, etc.):</p>
+collections expose <code class="docutils literal notranslate"><span class="pre">core_mask</span></code> and <code class="docutils literal notranslate"><span class="pre">reference</span></code>; <strong>1D</strong> exposes
+<code class="docutils literal notranslate"><span class="pre">cosmic_mask</span></code>):</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">data_clean</span><span class="p">,</span> <span class="n">diagnostics</span> <span class="o">=</span> <span class="n">remover</span><span class="o">.</span><span class="n">remove_with_diagnostics</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-<span class="c1"># e.g. diagnostics[&quot;core_mask&quot;] — boolean array of detected spikes (maps)</span>
-<span class="c1"># diagnostics[&quot;repair_mask&quot;] — dilated mask that was interpolated (maps)</span>
+<span class="c1"># e.g. diagnostics[&quot;core_mask&quot;] — boolean array of detected spikes</span>
+<span class="c1"># diagnostics[&quot;repair_mask&quot;] — dilated mask that was interpolated</span>
 </pre></div>
 </div>
-<p>Key parameters for <strong>single-spectrum</strong> removal:</p>
+<p>Key parameters for <strong>1D / per-spectrum</strong> removal:</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 30.0%" />
@@ -201,17 +201,14 @@ single-row spectra expose <code class="docutils literal notranslate"><span class
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">single_spectrum_method</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">&quot;median&quot;</span></code> (default), <code class="docutils literal notranslate"><span class="pre">&quot;interpolate&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;derivative&quot;</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">spike_width</span></code></p></td>
+<td><p>Odd integer ≥ 3; median filter window (default <code class="docutils literal notranslate"><span class="pre">5</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">kernel_size</span></code></p></td>
-<td><p>Odd integer ≥ 3; median filter window</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">spike_threshold</span></code></p></td>
+<td><p>Multiplier on robust MAD noise (lower → more aggressive, default <code class="docutils literal notranslate"><span class="pre">3.5</span></code>)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">threshold</span></code></p></td>
-<td><p>Multiplier on robust noise (higher → fewer detections)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_passes</span></code></p></td>
-<td><p>Single-spectrum path: number of detect–repair iterations (default <code class="docutils literal notranslate"><span class="pre">3</span></code>)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">spike_passes</span></code></p></td>
+<td><p>Number of detect–repair iterations (default <code class="docutils literal notranslate"><span class="pre">3</span></code>)</p></td>
 </tr>
 </tbody>
 </table>
@@ -227,26 +224,24 @@ single-row spectra expose <code class="docutils literal notranslate"><span class
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sensitivity</span></code></p></td>
-<td><p>Scales detection aggressiveness (higher → more hits)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">map_method</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;median&quot;</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">&quot;pca&quot;</span></code> reference for 2D/3D collections</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">width</span></code></p></td>
-<td><p>Spectral mask dilation as a fraction of the spectral length (map path)</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">map_sensitivity</span></code></p></td>
+<td><p>Scales detection aggressiveness for 3D disk-median engine (default <code class="docutils literal notranslate"><span class="pre">0.01</span></code>)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">disk_radius</span></code></p></td>
-<td><p>Spatial disk radius for the median reference filter</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">map_disk_radius</span></code></p></td>
+<td><p>Spatial disk radius for the 3D median reference filter (default <code class="docutils literal notranslate"><span class="pre">3</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">map_mad_multiplier</span></code></p></td>
-<td><p>Multiplier on per-channel MAD noise (larger → fewer false positives)</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">map_spike_width</span></code></p></td>
+<td><p>Spectral dilation window as a fraction of spectrum length (default <code class="docutils literal notranslate"><span class="pre">0.02</span></code>)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">map_require_spatial_local_max</span></code></p></td>
-<td><p>If True (default), keep only spatial local maxima at fixed wavelength,
-reducing bright extended features misclassified as cosmic rays</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">map_n_components</span></code></p></td>
+<td><p>Number of PCA components when <code class="docutils literal notranslate"><span class="pre">map_method=&quot;pca&quot;</span></code> (default <code class="docutils literal notranslate"><span class="pre">3</span></code>)</p></td>
 </tr>
 </tbody>
 </table>
-<p>See <a class="reference internal" href="api/wdfkit.html#wdfkit.CosmicRayRemover" title="wdfkit.CosmicRayRemover"><code class="xref py py-class docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code></a> for additional map tuning parameters
-(<code class="docutils literal notranslate"><span class="pre">map_noisy_channel_relax_min</span></code>, <code class="docutils literal notranslate"><span class="pre">map_spectral_dilate_cap</span></code>, …).</p>
+<p>See <a class="reference internal" href="api/wdfkit.html#wdfkit.CosmicRayRemover" title="wdfkit.CosmicRayRemover"><code class="xref py py-class docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code></a> for the full parameter list.</p>
 </section>
 <section id="normalization">
 <h2>Normalization<a class="headerlink" href="#normalization" title="Link to this heading"></a></h2>
@@ -295,19 +290,21 @@ fields). Large arrays live only in <code class="docutils literal notranslate"><s
 </section>
 <section id="typical-workflow">
 <h2>Typical workflow<a class="headerlink" href="#typical-workflow" title="Link to this heading"></a></h2>
-<p>A common end-to-end pipeline for a Raman map:</p>
+<p>A common end-to-end pipeline for a Raman/PL map:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">wdfkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">WDFReader</span><span class="p">,</span> <span class="n">CosmicRayRemover</span><span class="p">,</span> <span class="n">normalize</span><span class="p">,</span> <span class="n">SpectraCleaner</span>
 
 <span class="c1"># 1. Load</span>
-<span class="n">data</span><span class="p">,</span> <span class="n">image</span> <span class="o">=</span> <span class="n">WDFReader</span><span class="p">(</span><span class="s2">&quot;raman_map.wdf&quot;</span><span class="p">)</span>
+<span class="n">data</span><span class="p">,</span> <span class="n">image</span> <span class="o">=</span> <span class="n">WDFReader</span><span class="p">(</span><span class="s2">&quot;map.wdf&quot;</span><span class="p">)</span>
 
-<span class="c1"># 2. Remove cosmic rays (and Nd:YAG harmonics if applicable)</span>
-<span class="n">data</span> <span class="o">=</span> <span class="n">CosmicRayRemover</span><span class="p">(</span><span class="n">sensitivity</span><span class="o">=</span><span class="mf">0.015</span><span class="p">)</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<span class="c1"># 2. Remove cosmic rays (harmonics + spikes).</span>
+<span class="c1">#    Oversaturated spectra are detected and removed automatically.</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">CosmicRayRemover</span><span class="p">()</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 
 <span class="c1"># 3. Normalize</span>
 <span class="n">data</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;area&quot;</span><span class="p">)</span>
 
-<span class="c1"># 4. PCA denoise (any multi-spectrum cube or stack)</span>
+<span class="c1"># 4. PCA denoise.</span>
+<span class="c1">#    Oversaturated spectra are also checked automatically here.</span>
 <span class="n">data</span> <span class="o">=</span> <span class="n">SpectraCleaner</span><span class="p">(</span><span class="n">n_components</span><span class="o">=</span><span class="s2">&quot;mle&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 </pre></div>
 </div>

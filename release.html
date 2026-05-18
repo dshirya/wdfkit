@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release notes &mdash; wdfkit 0.1.0 documentation</title>
+  <title>Release notes &mdash; wdfkit 0.1.1rc1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=38b66d78"></script>
+      <script src="_static/documentation_options.js?v=4a90fbe9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -87,131 +87,32 @@
 <h2>0.1.0<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
 <p><strong>Added:</strong></p>
 <ul class="simple">
-<li><p>Add <code class="docutils literal notranslate"><span class="pre">chunks</span></code> parameter (<code class="docutils literal notranslate"><span class="pre">False</span></code> / <code class="docutils literal notranslate"><span class="pre">True</span></code> / int MB) to <code class="docutils literal notranslate"><span class="pre">WDFReader</span></code></p></li>
+<li><p>Add optional <code class="docutils literal notranslate"><span class="pre">chunks</span></code> on <code class="docutils literal notranslate"><span class="pre">WDFReader</span></code> for lazy, Dask-backed map reads with Y-row-aligned targets and a RAM guard before the <code class="docutils literal notranslate"><span class="pre">DATA</span></code> block.</p></li>
+<li><p>Add <code class="docutils literal notranslate"><span class="pre">wdfkit.read</span></code> and header-only <code class="docutils literal notranslate"><span class="pre">wdfkit.classify</span></code> on the public API.</p></li>
+<li><p>Add a <code class="docutils literal notranslate"><span class="pre">wdf/</span></code> layout with per-scan-kind handlers, <code class="docutils literal notranslate"><span class="pre">ParsedWDF</span></code>, and typed enums/constants for parsing and dispatch.</p></li>
+<li><p>Add <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> support for 2-D inputs and an iterative <code class="docutils literal notranslate"><span class="pre">max_passes</span></code> (default <code class="docutils literal notranslate"><span class="pre">3</span></code>).</p></li>
+<li><p>Expose <code class="docutils literal notranslate"><span class="pre">ExposureTime</span></code> and <code class="docutils literal notranslate"><span class="pre">LaserPower</span></code> from <code class="docutils literal notranslate"><span class="pre">WXDM</span></code> / <code class="docutils literal notranslate"><span class="pre">WXIS</span></code> as <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> attributes where applicable.</p></li>
+<li><p>Ship <code class="docutils literal notranslate"><span class="pre">py.typed</span></code> and extend type annotations on the read/assembly surface.</p></li>
 </ul>
-<p>for lazy, memory-efficient reading of large map files backed by
-<code class="xref py py-mod docutils literal notranslate"><span class="pre">dask</span></code>; chunks align to whole Y-rows and target ~128 MB each, capped
-at 20 chunks to avoid scheduler overhead.
-* Add pre-read RAM guard before the <code class="docutils literal notranslate"><span class="pre">DATA</span></code> block: raise <code class="docutils literal notranslate"><span class="pre">MemoryError</span></code>
-when the full array would exceed free RAM, or emit a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> when
-it would exceed 75 % of free RAM, with instructions to re-open with
-<code class="docutils literal notranslate"><span class="pre">chunks=True</span></code>.
-* Add handler-based dispatch architecture: each WDF scan kind (<code class="docutils literal notranslate"><span class="pre">single</span></code>,
-<code class="docutils literal notranslate"><span class="pre">series</span></code>, <code class="docutils literal notranslate"><span class="pre">points</span></code>, <code class="docutils literal notranslate"><span class="pre">line_xy</span></code>, <code class="docutils literal notranslate"><span class="pre">raster_rowmajor</span></code>,
-<code class="docutils literal notranslate"><span class="pre">raster_columnmajor</span></code>, <code class="docutils literal notranslate"><span class="pre">raster_snake</span></code>, <code class="docutils literal notranslate"><span class="pre">linefocus</span></code>, <code class="docutils literal notranslate"><span class="pre">volume</span></code>) has
-its own module under <code class="docutils literal notranslate"><span class="pre">wdf/handlers/</span></code>.
-* Add <code class="docutils literal notranslate"><span class="pre">wdfkit.read(path)</span></code> module-level function returning an
-<code class="docutils literal notranslate"><span class="pre">xr.DataArray</span></code> directly.
-* Add <code class="docutils literal notranslate"><span class="pre">wdfkit.classify(path)</span></code> for fast header-only scan-type triage without
-loading spectrum data.
-* Add <code class="docutils literal notranslate"><span class="pre">wdf/parsed.py</span></code> with the <code class="docutils literal notranslate"><span class="pre">ParsedWDF</span></code> immutable dataclass as the
-intermediate representation between block parsing and handler assembly.
-* Add <code class="docutils literal notranslate"><span class="pre">wdf/types.py</span></code> with <code class="docutils literal notranslate"><span class="pre">MeasurementType</span></code>, <code class="docutils literal notranslate"><span class="pre">ScanType</span></code>, <code class="docutils literal notranslate"><span class="pre">DataType</span></code>,
-<code class="docutils literal notranslate"><span class="pre">UnitType</span></code> enums and <code class="docutils literal notranslate"><span class="pre">MapFlag</span></code> bitmask constants.
-* Add <code class="docutils literal notranslate"><span class="pre">wdf/dispatch.py</span></code> with <code class="docutils literal notranslate"><span class="pre">classify_kind</span></code> and <code class="docutils literal notranslate"><span class="pre">dispatch</span></code> for routing
-a <code class="docutils literal notranslate"><span class="pre">ParsedWDF</span></code> to the correct handler.
-* Add 7 new test modules covering each WDF scan-kind handler.
-* Support 2-D data arrays in <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> (treated as line scans).
-* Add <code class="docutils literal notranslate"><span class="pre">max_passes</span></code> parameter (default <code class="docutils literal notranslate"><span class="pre">3</span></code>) to <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> for
-iterative 1-D cosmic-ray detection so that large spikes no longer hide
-smaller ones.
-* Extract <code class="docutils literal notranslate"><span class="pre">ExposureTime</span></code> (CCD exposure in seconds) and <code class="docutils literal notranslate"><span class="pre">LaserPower</span></code>
-(ND-filter transmission in percent) from the <code class="docutils literal notranslate"><span class="pre">WXDM</span></code> and <code class="docutils literal notranslate"><span class="pre">WXIS</span></code> blocks
-and store them as <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> attributes for single spectra, maps, and
-volume scans.
-* Added test data for the new API.
-* Add <code class="docutils literal notranslate"><span class="pre">ensure_in_memory</span></code> shared helper in <code class="docutils literal notranslate"><span class="pre">wdf/utils.py</span></code> to centralise
-the Dask warn-and-compute pattern across <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code>,
-<code class="docutils literal notranslate"><span class="pre">SpectraCleaner</span></code>, and <code class="docutils literal notranslate"><span class="pre">normalize</span></code>.
-* Add <code class="docutils literal notranslate"><span class="pre">_build_cr_meta_1d</span></code> method to <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> to deduplicate
-repeated construction of the 1-D cosmic-ray correction metadata dict.
-* Add <code class="docutils literal notranslate"><span class="pre">py.typed</span></code> marker (PEP 561) so that type checkers treat <code class="docutils literal notranslate"><span class="pre">wdfkit</span></code>
-as a typed package.
-* Add type annotations to <code class="docutils literal notranslate"><span class="pre">read_wdf_file</span></code> and the private assembly helpers.
-* Add <code class="docutils literal notranslate"><span class="pre">tests/test_spectra_cleaner.py</span></code> with 18 tests covering
-<code class="docutils literal notranslate"><span class="pre">SpectraCleaner</span></code> and the underlying <code class="docutils literal notranslate"><span class="pre">denoise_spectra_pca</span></code>.</p>
 <p><strong>Changed:</strong></p>
 <ul class="simple">
-<li><p>Make <a class="reference internal" href="api/wdfkit.html#module-wdfkit.preprocessing.normalize" title="wdfkit.preprocessing.normalize"><code class="xref py py-func docutils literal notranslate"><span class="pre">normalize()</span></code></a> Dask-aware: per-spectrum</p></li>
+<li><p>Make <code class="docutils literal notranslate"><span class="pre">normalize</span></code>, <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code>, and <code class="docutils literal notranslate"><span class="pre">SpectraCleaner</span></code> Dask-aware with lazy paths or warnings when full materialisation is needed.</p></li>
+<li><p>Unify <code class="docutils literal notranslate"><span class="pre">WDFReader</span></code>, <code class="docutils literal notranslate"><span class="pre">wdfkit.read</span></code>, and <code class="docutils literal notranslate"><span class="pre">read_wdf_file</span></code> on one handler-based code path; fold the former top-level <code class="docutils literal notranslate"><span class="pre">internal/</span></code>, <code class="docutils literal notranslate"><span class="pre">spectral/</span></code> package tree, and related modules into <code class="docutils literal notranslate"><span class="pre">wdf/</span></code> (public <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">wdfkit.spectral</span> <span class="pre">import</span> <span class="pre">SpectralAxisSpec</span></code> unchanged).</p></li>
+<li><p>Return map dimensions as <code class="docutils literal notranslate"><span class="pre">x</span></code> / <code class="docutils literal notranslate"><span class="pre">y</span></code> (was <code class="docutils literal notranslate"><span class="pre">X</span></code> / <code class="docutils literal notranslate"><span class="pre">Y</span></code>), single scans as 1-D spectral arrays, and sort the spectral coordinate ascending for all kinds.</p></li>
+<li><p>Tidy <code class="docutils literal notranslate"><span class="pre">attrs</span></code> (CamelCase only), use linear interpolation and slight mask dilation for 1-D cosmic-ray repair, and refresh docs and branding.</p></li>
 </ul>
-<p>methods (<code class="docutils literal notranslate"><span class="pre">&quot;l1&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;l2&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;min_max&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;area&quot;</span></code>)
-process each chunk independently via <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.apply_ufunc.html#xarray.apply_ufunc" title="(in xarray v2026.4.0)"><code class="xref py py-func docutils literal notranslate"><span class="pre">xarray.apply_ufunc()</span></code></a> and keep
-the result lazy; global methods (<code class="docutils literal notranslate"><span class="pre">&quot;robust_scale&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;wave_number&quot;</span></code>)
-load the full array and emit a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> explaining the memory
-impact.
-* Make <a class="reference internal" href="api/wdfkit.html#wdfkit.cosmic_ray.CosmicRayRemover" title="wdfkit.cosmic_ray.CosmicRayRemover"><code class="xref py py-class docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code></a> and
-<a class="reference internal" href="api/wdfkit.html#wdfkit.spectra_cleaner.SpectraCleaner" title="wdfkit.spectra_cleaner.SpectraCleaner"><code class="xref py py-class docutils literal notranslate"><span class="pre">SpectraCleaner</span></code></a> detect Dask-backed input,
-call <code class="docutils literal notranslate"><span class="pre">.compute()</span></code> before their NumPy/sklearn kernels, and emit a
-<code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> with the estimated RAM cost.
-* Consolidate all WDF I/O into a single <code class="docutils literal notranslate"><span class="pre">wdf/</span></code> subpackage: <code class="docutils literal notranslate"><span class="pre">internal/</span></code>,
-<code class="docutils literal notranslate"><span class="pre">spectral/</span></code>, top-level <code class="docutils literal notranslate"><span class="pre">handlers/</span></code>, and the root <code class="docutils literal notranslate"><span class="pre">_types.py</span></code>,
-<code class="docutils literal notranslate"><span class="pre">_parsed.py</span></code>, <code class="docutils literal notranslate"><span class="pre">_dispatch.py</span></code> files are all absorbed into <code class="docutils literal notranslate"><span class="pre">wdf/</span></code>.
-* Collapse <code class="docutils literal notranslate"><span class="pre">spectral/axis.py</span></code> to a flat <code class="docutils literal notranslate"><span class="pre">spectral.py</span></code> module; the public
-import path <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">wdfkit.spectral</span> <span class="pre">import</span> <span class="pre">SpectralAxisSpec</span></code> is unchanged.
-* Replace <code class="docutils literal notranslate"><span class="pre">wdf/assemble.py</span></code> with handler dispatch in <code class="docutils literal notranslate"><span class="pre">read_wdf_file</span></code>;
-<code class="docutils literal notranslate"><span class="pre">WDFReader</span></code>, <code class="docutils literal notranslate"><span class="pre">wdfkit.read</span></code>, and the legacy <code class="docutils literal notranslate"><span class="pre">read_wdf_file</span></code> now all
-share the same code path.
-* Rename map <code class="docutils literal notranslate"><span class="pre">xr.DataArray</span></code> dimensions to lowercase <code class="docutils literal notranslate"><span class="pre">x</span></code>/<code class="docutils literal notranslate"><span class="pre">y</span></code>
-(were <code class="docutils literal notranslate"><span class="pre">X</span></code>/<code class="docutils literal notranslate"><span class="pre">Y</span></code>).
-* Return single-scan <code class="docutils literal notranslate"><span class="pre">xr.DataArray</span></code> as 1-D (spectral axis only) instead of
-2-D <code class="docutils literal notranslate"><span class="pre">(Time,</span> <span class="pre">spectral)</span></code>.
-* Sort spectral coordinate ascending (low → high) for all scan kinds.
-* Remove duplicate lowercase keys from <code class="docutils literal notranslate"><span class="pre">DataArray.attrs</span></code>; only the existing
-CamelCase parameter keys are kept.
-* Use linear interpolation from the original signal for 1-D spike repair in
-all cases (was: <code class="docutils literal notranslate"><span class="pre">&quot;median&quot;</span></code> method replaced spikes with the biased
-median-filter value).
-* Dilate the 1-D spike mask by 1 channel on each side before repair to cover
-sub-threshold spike edges.
-* Include the <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> name and file identifier in <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code>
-error messages for easier debugging.
-* Update documentation to reflect the new API.
-* Change the logo to a more modern one.
-* Fix <code class="docutils literal notranslate"><span class="pre">WDFReader(chunks=True)</span></code> map assembly by splitting <code class="docutils literal notranslate"><span class="pre">sortby</span></code> into
-two 1-D calls (<code class="docutils literal notranslate"><span class="pre">da.sortby(sdim).sortby(&quot;Time&quot;)</span></code>) to avoid an
-unsupported nd fancy-index in Dask.
-* Raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> in <code class="docutils literal notranslate"><span class="pre">normalize</span></code> immediately when an unrecognised
-<code class="docutils literal notranslate"><span class="pre">method</span></code> is passed (was: silently returned an unchanged copy).
-* Replace <code class="docutils literal notranslate"><span class="pre">assert</span></code> statements for coordinate validation with explicit
-<code class="docutils literal notranslate"><span class="pre">raise</span> <span class="pre">ValueError</span></code> (asserts are stripped in optimised mode).
-* Replace <code class="docutils literal notranslate"><span class="pre">except</span> <span class="pre">Exception:</span> <span class="pre">pass</span></code> in <code class="docutils literal notranslate"><span class="pre">print_coord_lengths_if_verbose</span></code>
-with a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> that surfaces the failure message.
-* Replace <code class="docutils literal notranslate"><span class="pre">assert</span> <span class="pre">X</span> <span class="pre">or</span> <span class="pre">True</span></code> pyflakes workaround in <code class="docutils literal notranslate"><span class="pre">__init__.py</span></code> with
-<code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">noqa:</span> <span class="pre">F401</span></code> on each import line.
-* Correct <code class="docutils literal notranslate"><span class="pre">memory_check.py</span></code> docstring to accurately describe that the
-chunked path skips all RAM checks.
-* Remove unused <code class="docutils literal notranslate"><span class="pre">max_depth</span></code> parameter from <code class="docutils literal notranslate"><span class="pre">find_in_pset</span></code>.
-* Fix grammar in incomplete-recording warning: “was recorded” → “were
-recorded”.
-* Rename <code class="docutils literal notranslate"><span class="pre">test_normalize_invalid_method_warns</span></code> to
-<code class="docutils literal notranslate"><span class="pre">test_normalize_invalid_method_raises</span></code> to match the new <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>
-behaviour.</p>
 <p><strong>Fixed:</strong></p>
 <ul class="simple">
-<li><p>Fix <code class="docutils literal notranslate"><span class="pre">WDFReader(chunks=True)</span></code> on map files raising</p></li>
+<li><p>Fix chunked-map reads that hit Dask <code class="docutils literal notranslate"><span class="pre">nd</span></code> fancy-index failures during <code class="docutils literal notranslate"><span class="pre">sortby</span></code> assembly.</p></li>
+<li><p>Fix the installed <code class="docutils literal notranslate"><span class="pre">wdfkit</span></code> CLI entry point (<code class="docutils literal notranslate"><span class="pre">ModuleNotFoundError</span></code> under the previous target).</p></li>
+<li><p>Fix a file-pointer bug in <code class="docutils literal notranslate"><span class="pre">origin.py</span></code> for certain dtypes, preserve exception chaining on missing files in <code class="docutils literal notranslate"><span class="pre">io.py</span></code>, and confine truncated-image PIL settings to parsing so import has no global side effect.</p></li>
+<li><p>Gate noisy YLST debug output behind verbose mode.</p></li>
+<li><p>Raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> for unknown <code class="docutils literal notranslate"><span class="pre">normalize</span></code> methods instead of returning silently; replace coordinate <code class="docutils literal notranslate"><span class="pre">assert</span></code> checks with explicit errors.</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">NotImplementedError:</span> <span class="pre">Don't</span> <span class="pre">yet</span> <span class="pre">support</span> <span class="pre">nd</span> <span class="pre">fancy</span> <span class="pre">indexing</span></code>.
-* Fix <code class="docutils literal notranslate"><span class="pre">wdfkit</span></code> CLI entry point in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>:
-<code class="docutils literal notranslate"><span class="pre">wdfkit.app:main</span></code> → <code class="docutils literal notranslate"><span class="pre">wdfkit.wdfkit_app:main</span></code> (caused
-<code class="docutils literal notranslate"><span class="pre">ModuleNotFoundError</span></code> when the installed command was invoked).
-* Fix <code class="docutils literal notranslate"><span class="pre">origin.py</span></code> dtype 16/17 branch to advance the file pointer without
-discarding the result of an unassigned <code class="docutils literal notranslate"><span class="pre">np.array</span></code> call.
-* Chain the original exception in <code class="docutils literal notranslate"><span class="pre">io.py</span></code> file-not-found error
-(<code class="docutils literal notranslate"><span class="pre">raise</span> <span class="pre">IOError(...)</span> <span class="pre">from</span> <span class="pre">e</span></code> instead of <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">None</span></code>).
-* Move <code class="docutils literal notranslate"><span class="pre">ImageFile.LOAD_TRUNCATED_IMAGES</span> <span class="pre">=</span> <span class="pre">True</span></code> from module-level in
-<code class="docutils literal notranslate"><span class="pre">io.py</span></code> into <code class="docutils literal notranslate"><span class="pre">parse_whtl</span></code> to remove a hidden process-global PIL side
-effect on import.
-* Gate <code class="docutils literal notranslate"><span class="pre">ylst.py</span></code> debug <code class="docutils literal notranslate"><span class="pre">print(y_values)</span></code> behind <code class="docutils literal notranslate"><span class="pre">ctx.verbose</span></code>
-(was: printed unconditionally for every file with a YLST block).</p>
 <p><strong>Removed:</strong></p>
 <ul class="simple">
-<li><p>Remove <code class="docutils literal notranslate"><span class="pre">wdf/assemble.py</span></code> and its <code class="docutils literal notranslate"><span class="pre">assemble_data_array</span></code> helper.</p></li>
-<li><p>Remove <code class="docutils literal notranslate"><span class="pre">internal/</span></code> package (contents moved to <code class="docutils literal notranslate"><span class="pre">wdf/</span></code>).</p></li>
-<li><p>Remove <code class="docutils literal notranslate"><span class="pre">spectral/</span></code> package (replaced by <code class="docutils literal notranslate"><span class="pre">spectral.py</span></code>).</p></li>
-<li><p>Remove top-level <code class="docutils literal notranslate"><span class="pre">_types.py</span></code>, <code class="docutils literal notranslate"><span class="pre">_parsed.py</span></code>, <code class="docutils literal notranslate"><span class="pre">_dispatch.py</span></code>, and</p></li>
+<li><p>Remove the old <code class="docutils literal notranslate"><span class="pre">wdf/assemble.py</span></code>-centric layout, duplicate package roots absorbed into <code class="docutils literal notranslate"><span class="pre">wdf/</span></code>, and a few obsolete test helpers.</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">handlers/</span></code> (all moved into <code class="docutils literal notranslate"><span class="pre">wdf/</span></code>).
-* Remove dead <code class="docutils literal notranslate"><span class="pre">user_filesystem</span></code> fixture from <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code>.</p>
 </section>
 <section id="id2">
 <h2>0.0.1<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>

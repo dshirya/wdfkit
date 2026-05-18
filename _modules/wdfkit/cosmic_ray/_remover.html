@@ -1,0 +1,560 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>wdfkit.cosmic_ray._remover &mdash; wdfkit 0.1.1rc1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=4a90fbe9"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=cca77546"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            wdfkit
+              <img src="../../../_static/logo-no-background.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting-started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/wdfkit.html">Package API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">wdfkit</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">wdfkit.cosmic_ray._remover</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for wdfkit.cosmic_ray._remover</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;High-level cosmic-ray removal: :class:`CosmicRayRemover`.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.._shared._spectral</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_spectral_dim</span><span class="p">,</span> <span class="n">with_new_values</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.._shared.clean_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">CleanData</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..wdf.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">ensure_in_memory</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._1d</span><span class="w"> </span><span class="kn">import</span> <span class="n">remove_cosmic_rays_1d</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._harmonic</span><span class="w"> </span><span class="kn">import</span> <span class="n">harmonic_correct_dataarray</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._map</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">correct_cosmic_rays_collection</span><span class="p">,</span>
+    <span class="n">correct_cosmic_rays_on_map_cube</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Internal tuning constants (not exposed as user parameters)</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<span class="n">_MAP_MAD_MULTIPLIER</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">7.0</span>
+<span class="n">_MAP_NOISY_RELAX_MIN</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.82</span>
+<span class="n">_MAP_MIN_RESIDUAL_OVER_CUTOFF</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.05</span>
+<span class="n">_MAP_REQUIRE_SPATIAL_LOCAL_MAX</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="c1"># Below this many spectra → apply 1D engine independently per spectrum;</span>
+<span class="c1"># at or above → use the collection (global-median / PCA) engine.</span>
+<span class="n">_COLLECTION_THRESHOLD</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span>
+
+
+<div class="viewcode-block" id="CosmicRayRemover">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.CosmicRayRemover">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CosmicRayRemover</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cosmic-ray removal with automatic routing by data dimensionality.</span>
+
+<span class="sd">    **1D (single spectrum)** — always uses the 1D medfilt + MAD engine</span>
+<span class="sd">    controlled by :attr:`spike_width`, :attr:`spike_threshold`,</span>
+<span class="sd">    :attr:`spike_passes`.</span>
+
+<span class="sd">    **2D (line scan / series / point collection)**</span>
+
+<span class="sd">    * fewer than 20 spectra → 1D engine applied independently to each</span>
+<span class="sd">      spectrum (no population statistics yet).</span>
+<span class="sd">    * 20 or more spectra → *collection engine*: global median or PCA</span>
+<span class="sd">      reconstruction as reference; :attr:`map_method` selects which.</span>
+
+<span class="sd">    **3D (spatial map)**</span>
+
+<span class="sd">    * fewer than 20 spectra → same per-spectrum 1D path as above.</span>
+<span class="sd">    * 20 or more → spatial disk-median engine (``map_method=&quot;median&quot;``,</span>
+<span class="sd">      default) or PCA engine (``map_method=&quot;pca&quot;``).  The disk-median path</span>
+<span class="sd">      additionally respects :attr:`map_sensitivity` and</span>
+<span class="sd">      :attr:`map_disk_radius`.</span>
+
+<span class="sd">    Optionally removes broad Nd:YAG harmonics before spike removal via</span>
+<span class="sd">    :meth:`harmonic_check` / :meth:`remove`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    spike_width</span>
+<span class="sd">        **1D engine** — odd integer ≥ 3.  Sets the ``medfilt`` window in</span>
+<span class="sd">        spectral channels.  Raise to 9–13 when cosmic rays span 7–10</span>
+<span class="sd">        channels; keep at 5 for narrow single-channel spikes.</span>
+<span class="sd">    spike_threshold</span>
+<span class="sd">        **1D engine** — positive float.  Spike cutoff = ``spike_threshold ×</span>
+<span class="sd">        MAD_noise``.  Lower → more aggressive.  Raise to 5–6 for very</span>
+<span class="sd">        noisy spectra to avoid false positives.</span>
+<span class="sd">    spike_passes</span>
+<span class="sd">        **1D engine** — integer ≥ 1.  Iterations of detect → repair.  Each</span>
+<span class="sd">        pass works on the already-repaired signal so that large spikes no</span>
+<span class="sd">        longer mask smaller ones.</span>
+<span class="sd">    map_sensitivity</span>
+<span class="sd">        **3D disk-median engine only** — scales overall aggressiveness.</span>
+<span class="sd">        Larger → more hits (default 0.01).</span>
+<span class="sd">    map_disk_radius</span>
+<span class="sd">        **3D disk-median engine only** — spatial disk radius for the</span>
+<span class="sd">        reference median filter (pixels).</span>
+<span class="sd">    map_spike_width</span>
+<span class="sd">        **Collection / 3D engines** — spectral dilation in channels added</span>
+<span class="sd">        around each detected hit (integer ≥ 1).  Increase for broader</span>
+<span class="sd">        cosmic rays (e.g. ``9``–``15`` for multi-channel spikes).  The</span>
+<span class="sd">        repair region is capped at ``2 × map_spike_width`` channels.</span>
+<span class="sd">    map_method</span>
+<span class="sd">        ``&quot;median&quot;`` (default): global median spectrum as reference for 2D;</span>
+<span class="sd">        spatial disk-median for 3D.</span>
+<span class="sd">        ``&quot;pca&quot;``: PCA reconstruction as reference for both 2D and 3D.</span>
+<span class="sd">    map_n_components</span>
+<span class="sd">        **PCA path only** — number of principal components for the</span>
+<span class="sd">        reconstruction reference.  3–5 covers most real samples; increase</span>
+<span class="sd">        for multi-phase or compositionally diverse maps.</span>
+<span class="sd">    spectral_dim</span>
+<span class="sd">        Name of the spectral axis (default: last dimension).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># --- 1D engine ---</span>
+    <span class="n">spike_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span>
+    <span class="n">spike_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">3.5</span>
+    <span class="n">spike_passes</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>
+
+    <span class="c1"># --- collection / 3D engine ---</span>
+    <span class="n">map_sensitivity</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.01</span>
+    <span class="n">map_disk_radius</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="n">map_spike_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span>
+    <span class="n">map_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;median&quot;</span>
+    <span class="n">map_n_components</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>
+
+    <span class="c1"># --- shared ---</span>
+    <span class="n">spectral_dim</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_width</span> <span class="o">&lt;</span> <span class="mi">3</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_width</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;spike_width must be odd and &gt;= 3, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_width</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_threshold</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_threshold</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;spike_threshold must be positive and finite&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_passes</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;spike_passes must be &gt;= 1&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_sensitivity</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;map_sensitivity must be &gt; 0&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_spike_width</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;map_spike_width must be &gt;= 1&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_disk_radius</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;map_disk_radius must be &gt;= 1&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;median&quot;</span><span class="p">,</span> <span class="s2">&quot;pca&quot;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;map_method must be &#39;median&#39; or &#39;pca&#39;, &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">map_method</span><span class="si">!r}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_n_components</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;map_n_components must be &gt;= 1&quot;</span><span class="p">)</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Public API</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="CosmicRayRemover.harmonic_check">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.CosmicRayRemover.harmonic_check">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">harmonic_check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Notch broad harmonics when ``LaserWaveLength`` is ~355 nm</span>
+<span class="sd">        (Nd:YAG).</span>
+
+<span class="sd">        If ``spectrum.attrs[&#39;LaserWaveLength&#39;]`` is outside 354–356 nm,</span>
+<span class="sd">        returns ``spectrum`` unchanged.</span>
+
+<span class="sd">        Searches 1064 / 532 / 355 / 266 nm (±2.5 nm); replaces ~1 nm</span>
+<span class="sd">        around each found peak with linear interpolation.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">harmonic_correct_dataarray</span><span class="p">(</span>
+            <span class="n">spectrum</span><span class="p">,</span>
+            <span class="n">spectral_dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spectral_dim</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CosmicRayRemover.remove_cosmic_rays">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.CosmicRayRemover.remove_cosmic_rays">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_cosmic_rays</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Spike removal only (no harmonic notch).&quot;&quot;&quot;</span>
+        <span class="n">out</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_route</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">want_diagnostics</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span></div>
+
+
+<div class="viewcode-block" id="CosmicRayRemover.remove_cosmic_rays_with_diagnostics">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.CosmicRayRemover.remove_cosmic_rays_with_diagnostics">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_cosmic_rays_with_diagnostics</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">spectrum</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Like :meth:`remove_cosmic_rays`, but also returns a diagnostics</span>
+<span class="sd">        dict for visualization / QC (not written to ``DataArray.attrs``).</span>
+
+<span class="sd">        Diagnostics keys depend on the engine used:</span>
+
+<span class="sd">        * **1D**: ``&quot;cosmic_mask&quot;``, ``&quot;corrected_1d&quot;``</span>
+<span class="sd">        * **loop-1D** (&lt; 20 spectra, 2D/3D): ``&quot;cosmic_masks&quot;``</span>
+<span class="sd">        * **collection** (≥ 20 spectra, 2D or 3D PCA): ``&quot;core_mask&quot;``,</span>
+<span class="sd">          ``&quot;repair_mask&quot;``, ``&quot;residual&quot;``, ``&quot;reference&quot;``,</span>
+<span class="sd">          ``&quot;noise_per_channel&quot;``, ``&quot;cutoff&quot;``</span>
+<span class="sd">        * **3D disk-median**: same as current map diagnostics</span>
+<span class="sd">          (``&quot;core_mask&quot;``, ``&quot;repair_mask&quot;``, ``&quot;residual&quot;``,</span>
+<span class="sd">          ``&quot;preprocessed&quot;``, ``&quot;spatial_median_reference&quot;``, etc.)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_route</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">want_diagnostics</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CosmicRayRemover.remove">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.CosmicRayRemover.remove">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Harmonic cleanup first, then cosmic-ray removal.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">remove_cosmic_rays</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">harmonic_check</span><span class="p">(</span><span class="n">spectrum</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="CosmicRayRemover.remove_with_diagnostics">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.CosmicRayRemover.remove_with_diagnostics">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_with_diagnostics</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">spectrum</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Harmonics, then :meth:`remove_cosmic_rays_with_diagnostics`.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">remove_cosmic_rays_with_diagnostics</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">harmonic_check</span><span class="p">(</span><span class="n">spectrum</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CosmicRayRemover.transform">
+<a class="viewcode-back" href="../../../api/wdfkit.html#wdfkit.CosmicRayRemover.transform">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Alias of :meth:`remove` (harmonics then cosmic rays).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">spectrum</span><span class="p">)</span></div>
+
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Routing</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_route</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">da</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">want_diagnostics</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Dispatch to the correct engine based on shape and spectrum count.&quot;&quot;&quot;</span>
+        <span class="n">da</span> <span class="o">=</span> <span class="n">CleanData</span><span class="p">(</span><span class="n">spectral_dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spectral_dim</span><span class="p">)</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">da</span><span class="p">)</span>
+        <span class="n">ndim</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">ndim</span>
+
+        <span class="k">if</span> <span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">resolve_spectral_dim</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spectral_dim</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_1d</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">n_spectra</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">n_spectra</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_1d</span><span class="p">(</span>
+                    <span class="n">da</span><span class="p">,</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+                    <span class="n">want_diagnostics</span><span class="o">=</span><span class="n">want_diagnostics</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="n">n_spectra</span> <span class="o">&lt;</span> <span class="n">_COLLECTION_THRESHOLD</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_loop_1d</span><span class="p">(</span>
+                    <span class="n">da</span><span class="p">,</span> <span class="n">want_diagnostics</span><span class="o">=</span><span class="n">want_diagnostics</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_collection</span><span class="p">(</span>
+                <span class="n">da</span><span class="p">,</span> <span class="n">want_diagnostics</span><span class="o">=</span><span class="n">want_diagnostics</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">n_spectra</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">da</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">n_spectra</span> <span class="o">&lt;</span> <span class="n">_COLLECTION_THRESHOLD</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_loop_1d</span><span class="p">(</span>
+                    <span class="n">da</span><span class="p">,</span> <span class="n">want_diagnostics</span><span class="o">=</span><span class="n">want_diagnostics</span>
+                <span class="p">)</span>
+            <span class="n">da</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_maybe_compute_for_map</span><span class="p">(</span><span class="n">da</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_map</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="n">want_diagnostics</span><span class="o">=</span><span class="n">want_diagnostics</span><span class="p">)</span>
+
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;CosmicRayRemover supports 1-D (n_spectral,), &quot;</span>
+            <span class="s2">&quot;2-D (n_spatial, n_spectral), or 3-D (ny, nx, n_spectral); &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;got ndim=</span><span class="si">{</span><span class="n">da</span><span class="o">.</span><span class="n">ndim</span><span class="si">}</span><span class="s2">, shape=</span><span class="si">{</span><span class="n">da</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Engines</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_1d</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">da</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+        <span class="n">arr_1d</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">want_diagnostics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+        <span class="n">resolve_spectral_dim</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spectral_dim</span><span class="p">)</span>
+        <span class="n">corrected</span><span class="p">,</span> <span class="n">mask</span> <span class="o">=</span> <span class="n">remove_cosmic_rays_1d</span><span class="p">(</span>
+            <span class="n">arr_1d</span><span class="p">,</span>
+            <span class="n">kernel_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_width</span><span class="p">,</span>
+            <span class="n">threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_threshold</span><span class="p">,</span>
+            <span class="n">max_passes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_passes</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_meta_1d</span><span class="p">(</span><span class="n">mask</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">with_new_values</span><span class="p">(</span>
+            <span class="n">da</span><span class="p">,</span> <span class="n">corrected</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">shape</span><span class="p">),</span> <span class="s2">&quot;Cosmic Ray Correction&quot;</span><span class="p">,</span> <span class="n">meta</span>
+        <span class="p">)</span>
+        <span class="n">diag</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">{</span><span class="s2">&quot;cosmic_mask&quot;</span><span class="p">:</span> <span class="n">mask</span><span class="p">,</span> <span class="s2">&quot;corrected_1d&quot;</span><span class="p">:</span> <span class="n">corrected</span><span class="p">}</span>
+            <span class="k">if</span> <span class="n">want_diagnostics</span>
+            <span class="k">else</span> <span class="p">{}</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">diag</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_loop_1d</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">da</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">want_diagnostics</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply the 1D engine independently to every spectrum.&quot;&quot;&quot;</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">orig_shape</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">flat</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">orig_shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">out_flat</span> <span class="o">=</span> <span class="n">flat</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">masks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">flat</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span> <span class="k">if</span> <span class="n">want_diagnostics</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">n_corrected</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">flat</span><span class="p">):</span>
+            <span class="n">corrected</span><span class="p">,</span> <span class="n">mask</span> <span class="o">=</span> <span class="n">remove_cosmic_rays_1d</span><span class="p">(</span>
+                <span class="n">row</span><span class="p">,</span>
+                <span class="n">kernel_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_width</span><span class="p">,</span>
+                <span class="n">threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_threshold</span><span class="p">,</span>
+                <span class="n">max_passes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_passes</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">out_flat</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">corrected</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">mask</span><span class="p">):</span>
+                <span class="n">n_corrected</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">masks</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">masks</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">mask</span>
+        <span class="n">meta</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;spike_width&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_width</span><span class="p">,</span>
+            <span class="s2">&quot;spike_threshold&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_threshold</span><span class="p">,</span>
+            <span class="s2">&quot;spike_passes&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_passes</span><span class="p">,</span>
+            <span class="s2">&quot;spectra_corrected&quot;</span><span class="p">:</span> <span class="n">n_corrected</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">with_new_values</span><span class="p">(</span>
+            <span class="n">da</span><span class="p">,</span> <span class="n">out_flat</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">orig_shape</span><span class="p">),</span> <span class="s2">&quot;Cosmic Ray Correction&quot;</span><span class="p">,</span> <span class="n">meta</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">want_diagnostics</span> <span class="ow">and</span> <span class="n">masks</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">diag</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;cosmic_masks&quot;</span><span class="p">:</span> <span class="n">masks</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">orig_shape</span><span class="p">)}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">diag</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">diag</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_collection</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">da</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">want_diagnostics</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Global-median or PCA engine for 2D with ≥ 20 spectra.&quot;&quot;&quot;</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">correct_cosmic_rays_collection</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+            <span class="n">method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_method</span><span class="p">,</span>
+            <span class="n">threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_threshold</span><span class="p">,</span>
+            <span class="n">spectral_dilate_channels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_spike_width</span><span class="p">,</span>
+            <span class="n">max_repair_extent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_spike_width</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span>
+            <span class="n">n_components</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_n_components</span><span class="p">,</span>
+            <span class="n">return_diagnostics</span><span class="o">=</span><span class="n">want_diagnostics</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">want_diagnostics</span><span class="p">:</span>
+            <span class="n">corrected</span><span class="p">,</span> <span class="n">meta</span><span class="p">,</span> <span class="n">diag</span> <span class="o">=</span> <span class="n">result</span>  <span class="c1"># type: ignore[misc]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">corrected</span><span class="p">,</span> <span class="n">meta</span> <span class="o">=</span> <span class="n">result</span>  <span class="c1"># type: ignore[misc]</span>
+            <span class="n">diag</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">with_new_values</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="n">corrected</span><span class="p">,</span> <span class="s2">&quot;Cosmic Ray Correction&quot;</span><span class="p">,</span> <span class="n">meta</span><span class="p">),</span>
+            <span class="n">diag</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_map</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">da</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">want_diagnostics</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Spatial disk-median or PCA engine for 3D maps with ≥ 20 spectra.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_method</span> <span class="o">==</span> <span class="s2">&quot;pca&quot;</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">correct_cosmic_rays_collection</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+                <span class="n">method</span><span class="o">=</span><span class="s2">&quot;pca&quot;</span><span class="p">,</span>
+                <span class="n">threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spike_threshold</span><span class="p">,</span>
+                <span class="n">spectral_dilate_channels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_spike_width</span><span class="p">,</span>
+                <span class="n">max_repair_extent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_spike_width</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span>
+                <span class="n">n_components</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_n_components</span><span class="p">,</span>
+                <span class="n">return_diagnostics</span><span class="o">=</span><span class="n">want_diagnostics</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">want_diagnostics</span><span class="p">:</span>
+                <span class="n">corrected</span><span class="p">,</span> <span class="n">meta</span><span class="p">,</span> <span class="n">diag</span> <span class="o">=</span> <span class="n">result</span>  <span class="c1"># type: ignore[misc]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">corrected</span><span class="p">,</span> <span class="n">meta</span> <span class="o">=</span> <span class="n">result</span>  <span class="c1"># type: ignore[misc]</span>
+                <span class="n">diag</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="n">with_new_values</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="n">corrected</span><span class="p">,</span> <span class="s2">&quot;Cosmic Ray Correction&quot;</span><span class="p">,</span> <span class="n">meta</span><span class="p">),</span>
+                <span class="n">diag</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Default: spatial disk-median</span>
+        <span class="n">result_map</span> <span class="o">=</span> <span class="n">correct_cosmic_rays_on_map_cube</span><span class="p">(</span>
+            <span class="n">da</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="n">sensitivity</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_sensitivity</span><span class="p">,</span>
+            <span class="n">spectral_dilate_channels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_spike_width</span><span class="p">,</span>
+            <span class="n">disk_radius</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_disk_radius</span><span class="p">,</span>
+            <span class="n">map_mad_multiplier</span><span class="o">=</span><span class="n">_MAP_MAD_MULTIPLIER</span><span class="p">,</span>
+            <span class="n">map_noisy_channel_relax_min</span><span class="o">=</span><span class="n">_MAP_NOISY_RELAX_MIN</span><span class="p">,</span>
+            <span class="n">map_max_spectral_repair_extent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">map_spike_width</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span>
+            <span class="n">map_min_residual_over_cutoff</span><span class="o">=</span><span class="n">_MAP_MIN_RESIDUAL_OVER_CUTOFF</span><span class="p">,</span>
+            <span class="n">map_require_spatial_local_max</span><span class="o">=</span><span class="n">_MAP_REQUIRE_SPATIAL_LOCAL_MAX</span><span class="p">,</span>
+            <span class="n">return_diagnostic_masks</span><span class="o">=</span><span class="n">want_diagnostics</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">want_diagnostics</span><span class="p">:</span>
+            <span class="n">corrected_m</span><span class="p">,</span> <span class="n">meta_m</span><span class="p">,</span> <span class="n">diag_m</span> <span class="o">=</span> <span class="n">result_map</span>  <span class="c1"># type: ignore[misc]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">corrected_m</span><span class="p">,</span> <span class="n">meta_m</span> <span class="o">=</span> <span class="n">result_map</span>  <span class="c1"># type: ignore[misc]</span>
+            <span class="n">diag_m</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">with_new_values</span><span class="p">(</span><span class="n">da</span><span class="p">,</span> <span class="n">corrected_m</span><span class="p">,</span> <span class="s2">&quot;Cosmic Ray Correction&quot;</span><span class="p">,</span> <span class="n">meta_m</span><span class="p">),</span>
+            <span class="n">diag_m</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Helpers</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_meta_1d</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mask</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="n">meta</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;spike_width&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_width</span><span class="p">,</span>
+            <span class="s2">&quot;spike_threshold&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_threshold</span><span class="p">,</span>
+            <span class="s2">&quot;spike_passes&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spike_passes</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">mask</span><span class="p">):</span>
+            <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;CRs found (spectral indices)&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">mask</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">meta</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_da_label</span><span class="p">(</span><span class="n">da</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">parts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">da</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+            <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;name=</span><span class="si">{</span><span class="n">da</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;Title&quot;</span><span class="p">,</span> <span class="s2">&quot;filename&quot;</span><span class="p">,</span> <span class="s2">&quot;source&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">da</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
+                <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">=</span><span class="si">{</span><span class="n">da</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="k">if</span> <span class="n">parts</span> <span class="k">else</span> <span class="s2">&quot;unnamed DataArray&quot;</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_maybe_compute_for_map</span><span class="p">(</span><span class="n">da</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">ensure_in_memory</span><span class="p">(</span>
+            <span class="n">da</span><span class="p">,</span>
+            <span class="n">caller</span><span class="o">=</span><span class="s2">&quot;CosmicRayRemover&quot;</span><span class="p">,</span>
+            <span class="n">reason</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;The spatial disk-median algorithm requires all pixels in &quot;</span>
+                <span class="s2">&quot;memory simultaneously.</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="s2">&quot;If this causes an out-of-memory error, consider splitting &quot;</span>
+                <span class="s2">&quot;the map into sub-regions before CR removal.&quot;</span>
+            <span class="p">),</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;CosmicRayRemover&quot;</span><span class="p">,</span> <span class="s2">&quot;remove_cosmic_rays_1d&quot;</span><span class="p">]</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Ecole Polytechnique Palaiseau.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
