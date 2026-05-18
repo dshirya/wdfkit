@@ -78,22 +78,6 @@ def _per_wavelength_cutoff_relax_factors(
     return np.clip(ratio, relax_floor, 1.0)
 
 
-def _spectral_dilation_footprint_length(
-    n_channels: int,
-    spectral_width_fraction: float,
-    spectral_dilate_cap: int,
-) -> int:
-    """1D window length along the spectral axis for binary dilation of
-    the mask.
-
-    Capped so dilation does not cover most of each spectrum (keeps
-    repair local).
-    """
-    req = max(int(round(spectral_width_fraction * n_channels)), 1)
-    cap = max(int(spectral_dilate_cap), 1)
-    return min(req, cap, n_channels)
-
-
 def _limit_mask_runs_along_spectral_axis(
     mask: np.ndarray,
     residual: np.ndarray,
@@ -195,12 +179,11 @@ def correct_cosmic_rays_on_map_cube(
     values: np.ndarray,
     *,
     sensitivity: float,
-    spectral_width_fraction: float,
+    spectral_dilate_channels: int,
     disk_radius: int,
     map_mad_multiplier: float = 7.0,
     map_noisy_channel_relax_min: float = 0.82,
-    map_spectral_dilate_cap: int = 5,
-    map_max_spectral_repair_extent: int | None = 12,
+    map_max_spectral_repair_extent: int | None = None,
     map_min_residual_over_cutoff: float = 1.05,
     map_require_spatial_local_max: bool = True,
     return_diagnostic_masks: bool = False,
@@ -261,11 +244,7 @@ def correct_cosmic_rays_on_map_cube(
         core_mask &= _strict_spatial_local_max_mask(residual)
     bad = np.nonzero(core_mask)
     spatial_pairs = unique_spatial_indices_from_nonzero(bad, spatial_ndim=2)
-    dil_len = _spectral_dilation_footprint_length(
-        preprocessed.shape[-1],
-        spectral_width_fraction,
-        map_spectral_dilate_cap,
-    )
+    dil_len = min(max(spectral_dilate_channels, 1), preprocessed.shape[-1])
     dilated = _dilate_mask_along_spectral_axis(core_mask, dil_len)
     if map_max_spectral_repair_extent is not None:
         dilated = _limit_mask_runs_along_spectral_axis(
@@ -283,7 +262,7 @@ def correct_cosmic_rays_on_map_cube(
         "map_detection": "per_channel_spatial_mad",
         "map_mad_multiplier": map_mad_multiplier,
         "map_noisy_channel_relax_min": map_noisy_channel_relax_min,
-        "map_spectral_dilate_cap": map_spectral_dilate_cap,
+        "map_spectral_dilate_channels": spectral_dilate_channels,
         "map_max_spectral_repair_extent": map_max_spectral_repair_extent,
         "map_min_residual_over_cutoff": map_min_residual_over_cutoff,
         "map_spectral_dilate_used": dil_len,
@@ -313,9 +292,8 @@ def correct_cosmic_rays_collection(
     *,
     method: str = "median",
     threshold: float = 5.0,
-    spectral_width_fraction: float = 0.02,
-    spectral_dilate_cap: int = 5,
-    max_repair_extent: int | None = 12,
+    spectral_dilate_channels: int = 5,
+    max_repair_extent: int | None = None,
     n_components: int = 3,
     return_diagnostics: bool = False,
 ) -> (
@@ -423,9 +401,7 @@ def correct_cosmic_rays_collection(
     core_mask_3d = core_mask_flat.reshape(n_spectra, 1, n_channels)
     residual_3d = residual.reshape(n_spectra, 1, n_channels)
 
-    dil_len = _spectral_dilation_footprint_length(
-        n_channels, spectral_width_fraction, spectral_dilate_cap
-    )
+    dil_len = min(max(spectral_dilate_channels, 1), n_channels)
     dilated_3d = _dilate_mask_along_spectral_axis(core_mask_3d, dil_len)
     if max_repair_extent is not None:
         dilated_3d = _limit_mask_runs_along_spectral_axis(
