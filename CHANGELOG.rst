@@ -4,6 +4,38 @@ Release notes
 
 .. current developments
 
+0.1.1
+=====
+
+**Added:**
+
+* Added ``SpectraSmoother`` support for 1-D single spectra.
+* Added "PCA" CosmicRayRemover for 3D spectra
+* Add ``CleanData`` class to detect oversaturated spectra (10+ consecutive zero channels) and automatically remove them from 2D/3D arrays; integrated as the first step in ``CosmicRayRemover`` and ``SpectraCleaner``.
+* Add zero-saturation detection to ``CosmicRayRemover`` via ``_zero_saturation_mask``, flagging ADC-clipped channels before positive-spike removal.
+* Add reading of InitialCoordinates for 2D files.
+* Added ``CosmicRayRemover`` support for 1-D single spectra.
+* Add initial coordinate for 1D WDF files.
+
+**Changed:**
+
+* Reorganize package internals into dedicated sub-packages; the public API is unchanged.
+* Restrict top-level exports to ``WDFReader``, ``CosmicRayRemover``, ``SpectraCleaner``, and ``normalize``.
+* CHANGELOG.rst file updated.
+* Changed parameters set for CosmicRayRemover
+
+**Deprecated:**
+
+* ``wdfkit.preprocessing`` module; import ``normalize`` directly from ``wdfkit`` instead.
+
+**Fixed:**
+
+* Fixed a bug in the spectra smoother where the spectral dimension was not being preserved.
+* Fix ``CosmicRayRemover`` collection-engine repair to interpolate from the original spectrum's clean channels instead of the PCA reference, eliminating residual negative spikes.
+* Fix ``CosmicRayRemover`` collection engine to run a second detection pass on a reference rebuilt from clean data, improving sensitivity on heterogeneous maps.
+* Lower default ``spike_threshold`` in ``CosmicRayRemover`` from ``5.0`` to ``3.5`` to improve cosmic-ray detection on typical spectra.
+
+
 0.1.0
 =====
 
