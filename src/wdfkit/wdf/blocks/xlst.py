@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-from .. import constants as const
-from ..binary_io import read_from_file
-from ..block_index import indices_named
-from ..parse_context import ParseContext
-from ..spectral import resolve_spectral_axis
+from .._helpers import constants as const
+from .._helpers.binary_io import read_from_file
+from .._helpers.block_index import indices_named
+from .._helpers.parse_context import ParseContext
+from .._helpers.spectral import resolve_spectral_axis
 
 
 def parse_xlst(ctx: ParseContext) -> None:

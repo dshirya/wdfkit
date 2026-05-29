@@ -14,8 +14,8 @@ Currently extracted
 
 from __future__ import annotations
 
-from ..block_index import indices_named
-from ..parse_context import ParseContext
+from .._helpers.block_index import indices_named
+from .._helpers.parse_context import ParseContext
 from ..pset import decode_pset
 
 

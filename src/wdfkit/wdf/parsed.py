@@ -5,6 +5,7 @@ handlers."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Optional
 
 import numpy as np
@@ -26,6 +27,15 @@ class XLSTInfo:
 @dataclass
 class YLSTInfo:
     """Decoded YLST block (line-focus secondary axis)."""
+
+    values: np.ndarray
+    data_type: str
+    units: str
+
+
+@dataclass
+class BKXLInfo:
+    """Decoded BKXL (background X list) block."""
 
     values: np.ndarray
     data_type: str
@@ -96,6 +106,21 @@ class ParsedWDF:
     exposure_time: Optional[float] = None  # seconds
     laser_power: Optional[float] = None  # percent
     stage_xyz: Optional[dict] = None  # {"x": µm, "y": µm, "z": µm} from WXIS
+
+    # ---- new block data (§7–§11) ----
+    comment: Optional[str] = None  # TEXT block free text
+    acquisition: Any = None  # WXDA PSet
+    instrument_status: Any = None  # WXIS PSet
+    calibration: Any = None  # WXCS PSet
+    zeldac: Any = None  # ZLDC PSet
+    bkxl: Any = None  # BKXL XList (values, data_type, units)
+    whtl_jpeg_bytes: Optional[bytes] = None  # raw JPEG from WHTL block
+    initial_coordinates: Optional[dict] = (
+        None  # {"x_um","y_um","z_um","x_str","y_str","z_str"}
+    )
+    motor_positions: Optional[dict] = None
+    acquisition_time: Optional[datetime] = None  # decoded from ORGN Time
+    file_uuid: str = ""  # from WDF1 header
 
     # ------------------------------------------------------------------
     # Convenience helpers

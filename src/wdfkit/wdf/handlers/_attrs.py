@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import xarray as xr
 
-from ..utils import hr_filesize
+from .._helpers.utils import hr_filesize
 
 if TYPE_CHECKING:
     from ..parsed import ParsedWDF

@@ -11,7 +11,7 @@ import xarray as xr
 
 from .._shared._spectral import resolve_spectral_dim, with_new_values
 from .._shared.clean_data import CleanData
-from ..wdf.utils import ensure_in_memory
+from ..wdf._helpers.utils import ensure_in_memory
 from ._1d import remove_cosmic_rays_1d
 from ._harmonic import harmonic_correct_dataarray
 from ._map import (

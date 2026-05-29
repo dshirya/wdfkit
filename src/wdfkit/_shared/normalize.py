@@ -9,7 +9,7 @@ import numpy as np
 import xarray as xr
 from sklearn import preprocessing
 
-from ..wdf.utils import ensure_in_memory
+from ..wdf._helpers.utils import ensure_in_memory
 from ._spectral import (
     reshape_row_stack_to,
     resolve_spectral_dim,
