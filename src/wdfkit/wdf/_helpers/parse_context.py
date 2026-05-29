@@ -40,8 +40,20 @@ class ParseContext:
     measurement_type_raw: int = 0
     scan_type_raw: int = 0
     wmap_flag_raw: int = 0
-    # Stage position from WXIS (Single scans only)
+    # Stage position from WXIS (all measurement types)
     stage_xyz: Optional[dict] = None
+    # New block data
+    comment: Optional[str] = None  # TEXT block
+    acquisition: Any = None  # WXDA PSet
+    instrument_status: Any = None  # WXIS PSet
+    calibration: Any = None  # WXCS PSet
+    zeldac: Any = None  # ZLDC PSet
+    bkxl_values: Any = None  # BKXL float32 array
+    bkxl_data_type: str = ""
+    bkxl_units: str = ""
+    whtl_jpeg_bytes: Optional[bytes] = None  # raw JPEG from WHTL
+    initial_coordinates: Optional[dict] = None  # from WXIS
+    motor_positions: Optional[dict] = None  # from WXIS
 
     def print_block_header(self, name: str, index: int) -> None:
         if self.verbose:

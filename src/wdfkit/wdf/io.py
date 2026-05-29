@@ -1,28 +1,42 @@
-# -*- coding: latin-1 -*-
+# -*- coding: utf-8 -*-
 """Orchestrate WiRE ``.wdf`` parsing: block index → parsers → xarray
 assembly."""
 
 from __future__ import annotations
 
 import os
+from datetime import datetime
 
 import numpy as np
 import xarray as xr
 
-from .block_index import scan_blocks
-from .blocks.data_block import parse_data
-from .blocks.origin import parse_orgn, print_coord_lengths_if_verbose
+from ._helpers.block_index import scan_blocks
+from ._helpers.memory_check import check_memory
+from ._helpers.parse_context import ParseContext
+from ._helpers.spectral import resolve_spectral_axis
+from .blocks.bkxl import parse_bkxl
+from .blocks.data import parse_data
+from .blocks.orgn import parse_orgn, print_coord_lengths_if_verbose
+from .blocks.text import parse_text
 from .blocks.wdf1 import parse_wdf1
 from .blocks.whtl import parse_whtl
 from .blocks.wmap import parse_wmap
+from .blocks.wxcs import parse_wxcs
+from .blocks.wxda import parse_wxda
 from .blocks.wxdm import parse_wxdm
 from .blocks.wxis import parse_wxis
 from .blocks.xlst import parse_xlst
 from .blocks.ylst import parse_ylst
-from .memory_check import check_memory
-from .parse_context import ParseContext
-from .parsed import OrgnEntry, ParsedWDF, WMAPInfo, XLSTInfo, YLSTInfo
-from .spectral import resolve_spectral_axis
+from .blocks.zldc import parse_zldc
+from .error import WDFFormatError
+from .parsed import (
+    BKXLInfo,
+    OrgnEntry,
+    ParsedWDF,
+    WMAPInfo,
+    XLSTInfo,
+    YLSTInfo,
+)
 from .types import get_spectral_dim_name
 
 
@@ -57,6 +71,15 @@ def _ctx_to_parsed(ctx: ParseContext) -> ParsedWDF:
             units=ctx.ylst_units,
         )
 
+    # BKXL
+    bkxl: BKXLInfo | None = None
+    if ctx.bkxl_values is not None:
+        bkxl = BKXLInfo(
+            values=np.asarray(ctx.bkxl_values, dtype="float32"),
+            data_type=ctx.bkxl_data_type,
+            units=ctx.bkxl_units,
+        )
+
     # ORGN entries — pull from coord_dict (stores ("points", values, attrs))
     orgn_entries: list[OrgnEntry] = []
     for idx, label in enumerate(ctx.origin_labels):
@@ -85,6 +108,9 @@ def _ctx_to_parsed(ctx: ParseContext) -> ParsedWDF:
                 )
             )
 
+    # acquisition_time — use StartTime from WDF1 header (already a datetime)
+    acquisition_time: datetime | None = ctx.params.get("StartTime")
+
     # WMAP
     wmap: WMAPInfo | None = None
     mp = ctx.map_params
@@ -100,6 +126,9 @@ def _ctx_to_parsed(ctx: ParseContext) -> ParsedWDF:
             nsteps=np.asarray(mp["NbSteps"], dtype="uint32"),
             linefocus_size=int(mp.get("LineFocusSize", 0)),
         )
+
+    # file_uuid from WDF1 header
+    file_uuid: str = ctx.params.get("FileUUID", "")
 
     return ParsedWDF(
         filename=str(ctx.filename),
@@ -127,7 +156,92 @@ def _ctx_to_parsed(ctx: ParseContext) -> ParsedWDF:
         exposure_time=ctx.params.get("ExposureTime"),
         laser_power=ctx.params.get("LaserPower"),
         stage_xyz=ctx.stage_xyz,
+        # new fields
+        comment=ctx.comment,
+        acquisition=ctx.acquisition,
+        instrument_status=ctx.instrument_status,
+        calibration=ctx.calibration,
+        zeldac=ctx.zeldac,
+        bkxl=bkxl,
+        whtl_jpeg_bytes=ctx.whtl_jpeg_bytes,
+        initial_coordinates=ctx.initial_coordinates,
+        motor_positions=ctx.motor_positions,
+        acquisition_time=acquisition_time,
+        file_uuid=file_uuid,
     )
+
+
+def _validate(ctx: ParseContext) -> None:
+    """Run structural self-checks; raise :exc:`WDFFormatError` on failure."""
+    blocks = ctx.blocks
+    names = blocks.get("BlockNames", [])
+    sizes = blocks.get("BlockSizes", [])
+
+    def block_idx(name: str) -> int | None:
+        for i, n in enumerate(names):
+            if n == name:
+                return i
+        return None
+
+    # WDF1 must be first, size == 512
+    wdf1_i = block_idx("WDF1")
+    if wdf1_i is None or sizes[wdf1_i] != 512:
+        got = sizes[wdf1_i] if wdf1_i is not None else "absent"
+        raise WDFFormatError("WDF1 block size", 512, got)
+
+    # DATA body size
+    data_i = block_idx("DATA")
+    if data_i is not None:
+        expected_data = ctx.nspectra * ctx.npoints * 4
+        got_data = sizes[data_i] - 16
+        if got_data != expected_data:
+            raise WDFFormatError("DATA body size", expected_data, got_data)
+
+    # XLST body size
+    xlst_i = block_idx("XLST")
+    if xlst_i is not None:
+        expected_xlst = 8 + ctx.npoints * 4
+        got_xlst = sizes[xlst_i] - 16
+        if got_xlst != expected_xlst:
+            raise WDFFormatError("XLST body size", expected_xlst, got_xlst)
+
+    # YLST body size
+    ylst_i = block_idx("YLST")
+    ylist_length = int(ctx.params.get("YlistLength", 1))
+    if ylst_i is not None:
+        expected_ylst = 8 + ylist_length * 4
+        got_ylst = sizes[ylst_i] - 16
+        if got_ylst != expected_ylst:
+            raise WDFFormatError("YLST body size", expected_ylst, got_ylst)
+
+    # ORGN body size
+    orgn_i = block_idx("ORGN")
+    origin_count = int(ctx.params.get("DataOriginCount", 0))
+    if orgn_i is not None and origin_count > 0:
+        expected_orgn = 4 + origin_count * (24 + ctx.nspectra * 8)
+        got_orgn = sizes[orgn_i] - 16
+        if got_orgn != expected_orgn:
+            raise WDFFormatError("ORGN body size", expected_orgn, got_orgn)
+
+    # WMAP presence matches measurement_type == 3
+    wmap_present = block_idx("WMAP") is not None
+    is_map = ctx.measurement_type_raw == 3
+    if is_map and not wmap_present:
+        raise WDFFormatError("WMAP block for Map scan", "present", "absent")
+    if not is_map and wmap_present:
+        raise WDFFormatError(
+            "WMAP block for non-Map scan", "absent", "present"
+        )
+
+    # WMAP body must be 48 bytes
+    wmap_i = block_idx("WMAP")
+    if wmap_i is not None and sizes[wmap_i] - 16 != 48:
+        raise WDFFormatError("WMAP body size", 48, sizes[wmap_i] - 16)
+
+    # Sum of all block sizes == file size
+    total = sum(sizes)
+    if total != ctx.filesize:
+        raise WDFFormatError("sum of block sizes", ctx.filesize, total)
 
 
 def _run_parsers(
@@ -137,7 +251,7 @@ def _run_parsers(
 ) -> None:
     """Run block parsers against *ctx*.
 
-    When *load_data* is ``False`` the DATA, WHTL, ORGN, WXDM, and WXIS
+    When *load_data* is ``False`` the DATA, WHTL, ORGN, and PSET
     blocks are skipped (used by :func:`parse_wdf_header` for fast
     classification).
     """
@@ -149,10 +263,16 @@ def _run_parsers(
         parse_data(ctx)
         parse_xlst(ctx)
         parse_ylst(ctx)
+        parse_text(ctx)
         parse_whtl(ctx)
         parse_orgn(ctx)
+        parse_wxda(ctx)
         parse_wxdm(ctx)
         parse_wxis(ctx)
+        parse_wxcs(ctx)
+        parse_zldc(ctx)
+        parse_bkxl(ctx)
+        _validate(ctx)
     else:
         parse_xlst(ctx)
 

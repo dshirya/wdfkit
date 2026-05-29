@@ -21,7 +21,7 @@ from .._shared._spectral import (
     transpose_spectral_last,
     with_new_values,
 )
-from ..wdf.utils import ensure_in_memory
+from ..wdf._helpers.utils import ensure_in_memory
 from ._smooth_1d import auto_lam, savgol_smooth_1d, whittaker_smooth_1d
 
 SmoothMethod = Literal["savgol", "whittaker"]

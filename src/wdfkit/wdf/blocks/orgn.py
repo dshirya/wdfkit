@@ -9,11 +9,11 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from .. import constants as const
-from ..binary_io import read_from_file
-from ..block_index import indices_named
-from ..parse_context import ParseContext
-from ..utils import convert_time, pad_if_unfinished
+from .._helpers import constants as const
+from .._helpers.binary_io import read_from_file
+from .._helpers.block_index import indices_named
+from .._helpers.parse_context import ParseContext
+from .._helpers.utils import convert_time, pad_if_unfinished
 
 _EPOCH = datetime(year=1601, month=1, day=1, tzinfo=timezone.utc)
 

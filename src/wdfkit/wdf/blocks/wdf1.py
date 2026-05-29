@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from .. import constants as const
-from ..binary_io import read_from_file
-from ..block_index import indices_named
-from ..parse_context import ParseContext
-from ..utils import convert_time
+from .._helpers import constants as const
+from .._helpers.binary_io import read_from_file
+from .._helpers.block_index import indices_named
+from .._helpers.parse_context import ParseContext
+from .._helpers.utils import convert_time
 
 
 def parse_wdf1(ctx: ParseContext) -> None:

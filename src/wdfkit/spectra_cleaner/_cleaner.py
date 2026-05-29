@@ -23,7 +23,7 @@ from .._shared._spectral import (
     with_new_values,
 )
 from .._shared.clean_data import CleanData
-from ..wdf.utils import ensure_in_memory
+from ..wdf._helpers.utils import ensure_in_memory
 from ._pca import NComponents, denoise_spectra_pca
 
 if TYPE_CHECKING:

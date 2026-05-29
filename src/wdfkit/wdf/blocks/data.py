@@ -16,11 +16,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ..binary_io import read_from_file
-from ..block_index import indices_named
+from .._helpers.binary_io import read_from_file
+from .._helpers.block_index import indices_named
 
 if TYPE_CHECKING:
-    from ..parse_context import ParseContext
+    from .._helpers.parse_context import ParseContext
 
 # 16-byte block header that precedes the float32 payload in every WDF block.
 _BLOCK_HEADER_BYTES = 16
