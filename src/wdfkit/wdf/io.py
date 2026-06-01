@@ -108,8 +108,9 @@ def _ctx_to_parsed(ctx: ParseContext) -> ParsedWDF:
                 )
             )
 
-    # acquisition_time — use StartTime from WDF1 header (already a datetime)
+    # acquisition_time / end_time — from WDF1 header (already datetime)
     acquisition_time: datetime | None = ctx.params.get("StartTime")
+    end_time: datetime | None = ctx.params.get("EndTime")
 
     # WMAP
     wmap: WMAPInfo | None = None
@@ -167,6 +168,7 @@ def _ctx_to_parsed(ctx: ParseContext) -> ParsedWDF:
         initial_coordinates=ctx.initial_coordinates,
         motor_positions=ctx.motor_positions,
         acquisition_time=acquisition_time,
+        end_time=end_time,
         file_uuid=file_uuid,
     )
 
@@ -258,17 +260,17 @@ def _run_parsers(
     ctx.blocks = scan_blocks(ctx.f, ctx.filesize)
     parse_wdf1(ctx)
     parse_wmap(ctx)
+    parse_text(ctx)
+    parse_wxdm(ctx)
+    parse_wxis(ctx)
     if load_data:
         check_memory(ctx)
         parse_data(ctx)
         parse_xlst(ctx)
         parse_ylst(ctx)
-        parse_text(ctx)
         parse_whtl(ctx)
         parse_orgn(ctx)
         parse_wxda(ctx)
-        parse_wxdm(ctx)
-        parse_wxis(ctx)
         parse_wxcs(ctx)
         parse_zldc(ctx)
         parse_bkxl(ctx)
