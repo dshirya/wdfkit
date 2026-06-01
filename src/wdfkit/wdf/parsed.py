@@ -120,6 +120,7 @@ class ParsedWDF:
     )
     motor_positions: Optional[dict] = None
     acquisition_time: Optional[datetime] = None  # decoded from ORGN Time
+    end_time: Optional[datetime] = None  # from WDF1 header
     file_uuid: str = ""  # from WDF1 header
 
     # ------------------------------------------------------------------

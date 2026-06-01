@@ -18,6 +18,7 @@
 from wdfkit.version import __version__  # noqa: F401
 
 from ._shared.normalize import normalize  # noqa: F401
+from .catalog import catalog  # noqa: F401
 from .cosmic_ray import CosmicRayRemover, remove_cosmic_rays_1d  # noqa: F401
 from .reader import WDFReader, classify, read  # noqa: F401
 from .spectra_cleaner import SpectraCleaner  # noqa: F401
@@ -27,6 +28,7 @@ __all__ = [
     "WDFReader",
     "read",
     "classify",
+    "catalog",
     "normalize",
     "CosmicRayRemover",
     "remove_cosmic_rays_1d",
