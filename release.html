@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release notes &mdash; wdfkit 0.1.2rc1 documentation</title>
+  <title>Release notes &mdash; wdfkit 0.1.2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=d8ef2502"></script>
+      <script src="_static/documentation_options.js?v=b14783f5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -50,9 +50,10 @@
 <li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/wdfkit.html">Package API</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Release notes</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#id1">0.1.1</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id2">0.1.0</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id3">0.0.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id1">0.1.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">0.1.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">0.1.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">0.0.1</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="license.html">License</a></li>
@@ -85,7 +86,33 @@
   <section id="release-notes">
 <span id="index-0"></span><h1>Release notes<a class="headerlink" href="#release-notes" title="Link to this heading"></a></h1>
 <section id="id1">
-<h2>0.1.1<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<h2>0.1.2<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<p><strong>Added:</strong></p>
+<ul class="simple">
+<li><p>Added <code class="docutils literal notranslate"><span class="pre">wdfkit.catalog(directory)</span></code> to scan a folder of <code class="docutils literal notranslate"><span class="pre">.wdf</span></code> files using</p></li>
+</ul>
+<p>header-only parsing and return a <code class="docutils literal notranslate"><span class="pre">Catalog</span></code> object with a pandas DataFrame.
+* Added <code class="docutils literal notranslate"><span class="pre">Catalog.summary()</span></code> to group files by scan type with counts and date
+range.
+* Added <code class="docutils literal notranslate"><span class="pre">Catalog.to_csv(path)</span></code> to export the metadata table to a CSV file.
+* Added <code class="docutils literal notranslate"><span class="pre">Catalog.load(idx)</span></code> to load a full <code class="docutils literal notranslate"><span class="pre">WDFReader</span></code> for a selected file
+(1-based index).
+* Expose all parsed WDF block data as typed properties on <code class="docutils literal notranslate"><span class="pre">WDFReader</span></code>: <code class="docutils literal notranslate"><span class="pre">orgn</span></code>,
+<code class="docutils literal notranslate"><span class="pre">xlst</span></code>, <code class="docutils literal notranslate"><span class="pre">ylst</span></code>, <code class="docutils literal notranslate"><span class="pre">wmap</span></code>, <code class="docutils literal notranslate"><span class="pre">comment</span></code>, <code class="docutils literal notranslate"><span class="pre">acquisition</span></code>, <code class="docutils literal notranslate"><span class="pre">instrument_status</span></code>,
+<code class="docutils literal notranslate"><span class="pre">calibration</span></code>, <code class="docutils literal notranslate"><span class="pre">zeldac</span></code>, <code class="docutils literal notranslate"><span class="pre">bkxl</span></code>, <code class="docutils literal notranslate"><span class="pre">whtl_jpeg_bytes</span></code>, <code class="docutils literal notranslate"><span class="pre">initial_coordinates</span></code>,
+<code class="docutils literal notranslate"><span class="pre">motor_positions</span></code>, <code class="docutils literal notranslate"><span class="pre">acquisition_time</span></code>, <code class="docutils literal notranslate"><span class="pre">file_uuid</span></code>.
+* Add <code class="docutils literal notranslate"><span class="pre">WDFFormatError</span></code> raised on structural file integrity failures.
+* Add per-block test suite (87 new tests).</p>
+<p><strong>Changed:</strong></p>
+<ul class="simple">
+<li><p>Reorganise internal helpers into <code class="docutils literal notranslate"><span class="pre">wdf/_helpers/</span></code> subpackage.</p></li>
+<li><p>Rename block parsers to match WDF block IDs (<code class="docutils literal notranslate"><span class="pre">data.py</span></code>, <code class="docutils literal notranslate"><span class="pre">orgn.py</span></code>).</p></li>
+<li><p>Upgrade PSET parser to return structured <code class="docutils literal notranslate"><span class="pre">PSet</span></code> object with <code class="docutils literal notranslate"><span class="pre">get_by_label()</span></code>,</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">get_path()</span></code>, and <code class="docutils literal notranslate"><span class="pre">walk()</span></code> methods.</p>
+</section>
+<section id="id2">
+<h2>0.1.1<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
 <p><strong>Added:</strong></p>
 <ul class="simple">
 <li><p>Added <code class="docutils literal notranslate"><span class="pre">SpectraSmoother</span></code> support for 1-D single spectra.</p></li>
@@ -115,8 +142,8 @@
 <li><p>Lower default <code class="docutils literal notranslate"><span class="pre">spike_threshold</span></code> in <code class="docutils literal notranslate"><span class="pre">CosmicRayRemover</span></code> from <code class="docutils literal notranslate"><span class="pre">5.0</span></code> to <code class="docutils literal notranslate"><span class="pre">3.5</span></code> to improve cosmic-ray detection on typical spectra.</p></li>
 </ul>
 </section>
-<section id="id2">
-<h2>0.1.0<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<section id="id3">
+<h2>0.1.0<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
 <p><strong>Added:</strong></p>
 <ul class="simple">
 <li><p>Add optional <code class="docutils literal notranslate"><span class="pre">chunks</span></code> on <code class="docutils literal notranslate"><span class="pre">WDFReader</span></code> for lazy, Dask-backed map reads with Y-row-aligned targets and a RAM guard before the <code class="docutils literal notranslate"><span class="pre">DATA</span></code> block.</p></li>
@@ -146,8 +173,8 @@
 <li><p>Remove the old <code class="docutils literal notranslate"><span class="pre">wdf/assemble.py</span></code>-centric layout, duplicate package roots absorbed into <code class="docutils literal notranslate"><span class="pre">wdf/</span></code>, and a few obsolete test helpers.</p></li>
 </ul>
 </section>
-<section id="id3">
-<h2>0.0.1<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
+<section id="id4">
+<h2>0.0.1<a class="headerlink" href="#id4" title="Link to this heading"></a></h2>
 <p><strong>Changed:</strong></p>
 <ul class="simple">
 <li><p>README.rst file updated.</p></li>
