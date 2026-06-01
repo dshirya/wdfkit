@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>wdfkit.reader &mdash; wdfkit 0.1.1 documentation</title>
+  <title>wdfkit.reader &mdash; wdfkit 0.1.2rc1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -13,7 +13,7 @@
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=91f6191e"></script>
+      <script src="../../_static/documentation_options.js?v=d8ef2502"></script>
       <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -82,12 +82,25 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Union</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.wdf.dispatch</span><span class="w"> </span><span class="kn">import</span> <span class="n">classify_kind</span><span class="p">,</span> <span class="n">dispatch</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.wdf.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_wdf_header</span><span class="p">,</span> <span class="n">parse_wdf_to_parsed</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.wdf.parsed</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+        <span class="n">BKXLInfo</span><span class="p">,</span>
+        <span class="n">OrgnEntry</span><span class="p">,</span>
+        <span class="n">ParsedWDF</span><span class="p">,</span>
+        <span class="n">WMAPInfo</span><span class="p">,</span>
+        <span class="n">XLSTInfo</span><span class="p">,</span>
+        <span class="n">YLSTInfo</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.wdf.pset</span><span class="w"> </span><span class="kn">import</span> <span class="n">PSet</span>
 
 <span class="n">StrPath</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">PathLike</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span>
 
@@ -95,26 +108,26 @@
 <div class="viewcode-block" id="WDFReader">
 <a class="viewcode-back" href="../../api/wdfkit.html#wdfkit.WDFReader">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">WDFReader</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load spectra and metadata from a Renishaw WiRE ``.wdf`` binary</span>
-<span class="sd">    file.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load and expose all parsed data from a Renishaw WiRE ``.wdf`` file.</span>
 
 <span class="sd">    Typical usage::</span>
 
 <span class="sd">        data_array, white_light_image = WDFReader(path)</span>
 
-<span class="sd">    After construction, ``.data`` and ``.image`` hold the same objects as the</span>
-<span class="sd">    unpacked tuple.</span>
+<span class="sd">    After construction every block is accessible as a typed property.</span>
+<span class="sd">    The xarray DataArray (shaped by scan type) is in ``.data``; the PIL</span>
+<span class="sd">    white-light image (if any) is in ``.image``.  Both are also yielded</span>
+<span class="sd">    by unpacking the reader directly.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    spectral_dim</span>
-<span class="sd">        Name for the spectral axis coordinate (default ``None`` /</span>
-<span class="sd">        ``&quot;auto&quot;``).  WiRE ``XLST`` ``XlistDataUnits`` selects the</span>
-<span class="sd">        default (e.g. ``RamanShift`` → dimension ``&quot;raman_shift&quot;``).</span>
-<span class="sd">        Set to ``&quot;shifts&quot;`` for legacy notebooks.</span>
+<span class="sd">        Override for the spectral-axis dimension name.  ``None`` (default)</span>
+<span class="sd">        auto-selects from the XLST units (e.g. ``RamanShift`` →</span>
+<span class="sd">        ``&quot;raman_shift&quot;``).</span>
 <span class="sd">    chunks</span>
-<span class="sd">        Enable lazy Dask-backed reading.  ``False`` (default) = eager;</span>
-<span class="sd">        ``True`` = auto-chunk at ~128 MB per chunk; ``int`` = target MB.</span>
+<span class="sd">        Dask lazy reading: ``False`` (default, eager NumPy), ``True``</span>
+<span class="sd">        (auto-chunk ~128 MB), or ``int`` (target MB per chunk).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
@@ -134,23 +147,204 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_spectral_dim</span> <span class="o">=</span> <span class="n">spectral_dim</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_chunks</span> <span class="o">=</span> <span class="n">chunks</span>
 
-        <span class="n">parsed</span> <span class="o">=</span> <span class="n">parse_wdf_to_parsed</span><span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="p">:</span> <span class="n">ParsedWDF</span> <span class="o">=</span> <span class="n">parse_wdf_to_parsed</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span>
             <span class="n">verbose</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">,</span>
             <span class="n">time_coord</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_time_coord</span><span class="p">,</span>
             <span class="n">spectral_dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_spectral_dim</span><span class="p">,</span>
             <span class="n">chunks</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_chunks</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="c1"># Override spectral dim name when explicitly requested</span>
         <span class="k">if</span> <span class="n">spectral_dim</span> <span class="ow">and</span> <span class="n">spectral_dim</span> <span class="o">!=</span> <span class="s2">&quot;auto&quot;</span><span class="p">:</span>
-            <span class="n">parsed</span><span class="o">.</span><span class="n">xlst</span><span class="o">.</span><span class="n">dim_name</span> <span class="o">=</span> <span class="n">spectral_dim</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">xlst</span><span class="o">.</span><span class="n">dim_name</span> <span class="o">=</span> <span class="n">spectral_dim</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span> <span class="o">=</span> <span class="n">dispatch</span><span class="p">(</span><span class="n">parsed</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">parsed</span><span class="o">.</span><span class="n">img</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span> <span class="o">=</span> <span class="n">dispatch</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">img</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span>
-        <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">image</span></div>
+        <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">image</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># WDF1 header scalars</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">measurement_type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Raw measurement type integer (1=Single, 2=Series, 3=Map).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">measurement_type</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">scan_type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Raw scan type integer.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">scan_type</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">nspectra</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Planned number of spectra (capacity).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">nspectra</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ncollected</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Actually collected number of spectra.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">ncollected</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">xlist_length</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Number of spectral channels per spectrum.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">npoints</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ylist_length</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Detector Y-axis length (1 for point detectors).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">ylist_length</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">naccum</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accumulations per spectrum.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">naccum</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">app_name</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;WiRE application name string.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">app_name</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">app_version</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;WiRE application version string.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">app_version</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">file_uuid</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Unique file identifier from WDF1 header.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">file_uuid</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Spectral &amp; secondary axes (§4, §5)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">xlst</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">XLSTInfo</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;XLST block: spectral axis values, data_type, units, dim_name.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">xlst</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ylst</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">YLSTInfo</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;YLST block: detector-Y axis (None for point detectors).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">ylst</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Raw spectral data (§3)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">raw_data</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Flat spectral array of shape (nspectra, xlist_length), float32.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">data</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Per-spectrum origins (§6)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">orgn</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">OrgnEntry</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;List of ORGN entries (spatial / time / flags per spectrum).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">orgn</span>
+
+<div class="viewcode-block" id="WDFReader.orgn_by_type">
+<a class="viewcode-back" href="../../api/wdfkit.html#wdfkit.WDFReader.orgn_by_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">orgn_by_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">OrgnEntry</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the first ORGN entry matching *data_type*.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">orgn_by_type</span><span class="p">(</span><span class="n">data_type</span><span class="p">)</span></div>
+
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Text comment (§7)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">comment</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Free-text comment from the TEXT block.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">comment</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Map geometry (§8)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wmap</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WMAPInfo</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;WMAP block: grid geometry. ``None`` if not a map scan.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">wmap</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># White-light image (§9)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">whtl_jpeg_bytes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Raw JPEG bytes from the WHTL block, or ``None`` if absent.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">whtl_jpeg_bytes</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_whitelight</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;``True`` if a WHTL white-light image block is present.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">whtl_jpeg_bytes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># PSET blocks (§10)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">acquisition</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PSet</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;WXDA block parsed as a PSet (scan / acquisition properties).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">acquisition</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">instrument_status</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PSet</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;WXIS block parsed as a PSet (motor positions, instrument state).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">instrument_status</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">calibration</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PSet</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;WXCS block parsed as a PSet (calibration settings).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">calibration</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">zeldac</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PSet</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;ZLDC block parsed as a PSet (zero level &amp; dark current).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">zeldac</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Derived convenience accessors</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initial_coordinates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Stage XYZ at acquisition time from WXIS.</span>
+
+<span class="sd">        Returns ``{&quot;x_um&quot;, &quot;y_um&quot;, &quot;z_um&quot;, &quot;x_str&quot;, &quot;y_str&quot;, &quot;z_str&quot;}``</span>
+<span class="sd">        for every measurement type, including Single scans where ORGN</span>
+<span class="sd">        carries no spatial origins.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">initial_coordinates</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">motor_positions</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;All motor positions from WXIS as ``{label: (µm, string)}``.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">motor_positions</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">acquisition_time</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">datetime</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Acquisition start time decoded from the ORGN Time entry.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">acquisition_time</span>
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Background X list (§11)</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bkxl</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BKXLInfo</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;BKXL block: background X list (mirrored spectral axis).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsed</span><span class="o">.</span><span class="n">bkxl</span></div>
 
 
 
