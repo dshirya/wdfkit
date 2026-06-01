@@ -4,6 +4,33 @@ Release notes
 
 .. current developments
 
+0.1.2
+=====
+
+**Added:**
+
+* Added ``wdfkit.catalog(directory)`` to scan a folder of ``.wdf`` files using
+header-only parsing and return a ``Catalog`` object with a pandas DataFrame.
+* Added ``Catalog.summary()`` to group files by scan type with counts and date
+range.
+* Added ``Catalog.to_csv(path)`` to export the metadata table to a CSV file.
+* Added ``Catalog.load(idx)`` to load a full ``WDFReader`` for a selected file
+(1-based index).
+* Expose all parsed WDF block data as typed properties on ``WDFReader``: ``orgn``,
+``xlst``, ``ylst``, ``wmap``, ``comment``, ``acquisition``, ``instrument_status``,
+``calibration``, ``zeldac``, ``bkxl``, ``whtl_jpeg_bytes``, ``initial_coordinates``,
+``motor_positions``, ``acquisition_time``, ``file_uuid``.
+* Add ``WDFFormatError`` raised on structural file integrity failures.
+* Add per-block test suite (87 new tests).
+
+**Changed:**
+
+* Reorganise internal helpers into ``wdf/_helpers/`` subpackage.
+* Rename block parsers to match WDF block IDs (``data.py``, ``orgn.py``).
+* Upgrade PSET parser to return structured ``PSet`` object with ``get_by_label()``,
+``get_path()``, and ``walk()`` methods.
+
+
 0.1.1
 =====
 
